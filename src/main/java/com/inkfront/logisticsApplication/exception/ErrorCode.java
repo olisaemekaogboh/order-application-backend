@@ -1,0 +1,83 @@
+package com.inkfront.logisticsApplication.exception;
+
+public enum ErrorCode {
+    // General Errors
+    INTERNAL_SERVER_ERROR("ERR-001"),
+    BAD_REQUEST("ERR-002"),
+    NOT_FOUND("ERR-003"),
+    UNAUTHORIZED("ERR-004"),
+    FORBIDDEN("ERR-005"),
+    CONFLICT("ERR-006"),
+    VALIDATION_ERROR("ERR-007"),
+    RATE_LIMIT_EXCEEDED("ERR-008"),
+
+    // Authentication Errors
+    INVALID_CREDENTIALS("AUTH-001"),
+    TOKEN_EXPIRED("AUTH-002"),
+    INVALID_TOKEN("AUTH-003"),
+    ACCOUNT_LOCKED("AUTH-004"),
+    ACCOUNT_DISABLED("AUTH-005"),
+    ACCOUNT_EXPIRED("AUTH-006"),
+    INVALID_REFRESH_TOKEN("AUTH-007"),
+
+    // User Errors
+    USER_NOT_FOUND("USER-001"),
+    USER_ALREADY_EXISTS("USER-002"),
+    EMAIL_ALREADY_EXISTS("USER-003"),
+    PHONE_ALREADY_EXISTS("USER-004"),
+    INVALID_USER_ROLE("USER-005"),
+
+    // Order Errors
+    ORDER_NOT_FOUND("ORD-001"),
+    INVALID_ORDER_STATUS("ORD-002"),
+    ORDER_ALREADY_DELIVERED("ORD-003"),
+    ORDER_ALREADY_CANCELLED("ORD-004"),
+    ORDER_ASSIGNMENT_FAILED("ORD-005"),
+    ORDER_PAYMENT_FAILED("ORD-006"),
+
+    // Driver Errors
+    DRIVER_NOT_FOUND("DRV-001"),
+    DRIVER_NOT_AVAILABLE("DRV-002"),
+    DRIVER_ALREADY_ASSIGNED("DRV-003"),
+    INVALID_VEHICLE_TYPE("DRV-004"),
+    DRIVER_LICENSE_EXPIRED("DRV-005"),
+
+    // Payment Errors
+    PAYMENT_FAILED("PAY-001"),
+    INVALID_PAYMENT_METHOD("PAY-002"),
+    PAYMENT_NOT_FOUND("PAY-003"),
+    INSUFFICIENT_FUNDS("PAY-004"),
+    REFUND_FAILED("PAY-005"),
+
+    // Validation Errors
+    INVALID_DISTANCE("VAL-001"),
+    INVALID_WEIGHT("VAL-002"),
+    INVALID_VOLUME("VAL-003"),
+    INVALID_ADDRESS("VAL-004"),
+    INVALID_EMAIL("VAL-005"),
+    INVALID_PHONE("VAL-006"),
+    INVALID_PASSWORD("VAL-007"),
+
+    // Data Errors
+    DATA_INTEGRITY_VIOLATION("DATA-001"),
+    DUPLICATE_DATA("DATA-002"),
+    DATA_NOT_FOUND("DATA-003"),
+
+    // System Errors
+    SERVICE_UNAVAILABLE("SYS-001"),
+    DATABASE_ERROR("SYS-002"),
+    CACHE_ERROR("SYS-003"),
+    FILE_UPLOAD_ERROR("SYS-004"),
+    EMAIL_SEND_ERROR("SYS-005"),
+    SMS_SEND_ERROR("SYS-006");
+
+    private final String code;
+
+    ErrorCode(String code) {
+        this.code = code;
+    }
+
+    public String getCode() {
+        return code;
+    }
+}

@@ -1,0 +1,20 @@
+# Environment
+.env
+.env.*
+
+# Logs
+logs/
+*.log
+*.gz
+
+# Build
+target/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db
