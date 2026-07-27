@@ -1,20 +1,23 @@
 package com.inkfront.logisticsApplication.mapper;
 
 import com.inkfront.logisticsApplication.domain.entity.SystemConfig;
+import com.inkfront.logisticsApplication.dto.request.admin.SystemConfigRequestDTO;
+import com.inkfront.logisticsApplication.dto.request.admin.SystemConfigUpdateRequestDTO;
 import com.inkfront.logisticsApplication.dto.response.admin.SystemConfigDTO;
 import org.mapstruct.*;
 
 import java.util.List;
 
-@Mapper(componentModel = "spring", unmappedTargetPolicy = ReportingPolicy.IGNORE)
-public abstract class SystemConfigMapper {
+@Mapper(componentModel = "spring")
+public interface SystemConfigMapper {
 
-    public abstract SystemConfigDTO toDTO(SystemConfig systemConfig);
+    SystemConfigDTO toDTO(SystemConfig entity);
 
-    @Mapping(target = "id", ignore = true)
-    @Mapping(target = "createdAt", ignore = true)
-    @Mapping(target = "updatedAt", ignore = true)
-    public abstract SystemConfig toEntity(SystemConfigDTO systemConfigDTO);
+    SystemConfig toEntity(SystemConfigRequestDTO request);
 
-    public abstract List<SystemConfigDTO> toDTOList(List<SystemConfig> systemConfigs);
+    @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
+    void updateEntityFromRequest(
+            SystemConfigUpdateRequestDTO request,
+            @MappingTarget SystemConfig entity
+    );
 }

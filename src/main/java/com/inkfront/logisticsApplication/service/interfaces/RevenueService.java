@@ -1,6 +1,7 @@
 package com.inkfront.logisticsApplication.service.interfaces;
 
 import com.inkfront.logisticsApplication.dto.request.admin.RevenueReportRequestDTO;
+import com.inkfront.logisticsApplication.dto.request.revenue.*;
 import com.inkfront.logisticsApplication.dto.response.revenue.*;
 
 import java.time.LocalDate;
@@ -8,6 +9,7 @@ import java.util.List;
 
 public interface RevenueService {
 
+    // Existing methods (unchanged)
     RevenueReportDTO generateRevenueReport(RevenueReportRequestDTO request);
 
     DailyRevenueDTO getDailyRevenue(LocalDate date);
@@ -41,4 +43,14 @@ public interface RevenueService {
     Double getTotalCommission(LocalDate startDate, LocalDate endDate);
 
     Double getTotalDriverPayout(LocalDate startDate, LocalDate endDate);
+
+    // --- NEW METHODS USING REQUEST DTOs ---
+
+    DriverEarningsReportDTO getDriverEarnings(DriverEarningsReportRequestDTO request);
+
+    PaymentReportDTO getPaymentReport(PaymentReportRequestDTO request);
+
+    DriverPayoutDTO processDriverPayout(DriverPayoutRequestDTO request);
+
+    CommissionReportDTO getCommissionReport(CommissionReportRequestDTO request);
 }

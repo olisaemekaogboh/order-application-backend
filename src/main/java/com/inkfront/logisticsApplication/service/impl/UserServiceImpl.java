@@ -2,7 +2,10 @@ package com.inkfront.logisticsApplication.service.impl;
 
 import com.inkfront.logisticsApplication.domain.entity.User;
 import com.inkfront.logisticsApplication.domain.enums.UserRole;
-import com.inkfront.logisticsApplication.dto.request.user.UserUpdateRequestDTO;
+import com.inkfront.logisticsApplication.dto.request.user.ChangePasswordRequestDTO;
+import com.inkfront.logisticsApplication.dto.request.user.UpdateProfileRequestDTO;
+import com.inkfront.logisticsApplication.dto.request.user.UserRoleUpdateRequestDTO;
+import com.inkfront.logisticsApplication.dto.request.user.UserStatusUpdateRequestDTO;
 import com.inkfront.logisticsApplication.dto.response.common.PaginatedResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.user.UserDTO;
 import com.inkfront.logisticsApplication.exception.BadRequestException;
@@ -43,7 +46,6 @@ public class UserServiceImpl implements UserService {
         return userMapper.toDTO(user);
     }
 
-
     @Override
     public UserDTO getUserByEmail(String email) {
         User user = userRepository.findByEmail(email)
@@ -52,27 +54,37 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public UserDTO updateUser(String userId, UserUpdateRequestDTO updateRequest) {
-        log.info("Updating user: {}", userId);
+    public UserDTO updateProfile(String userId, UpdateProfileRequestDTO request) {
+        log.info("Updating profile for user {}", userId);
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.USER_NOT_FOUND));
 
         // Check if email is being changed and is available
-        if (updateRequest.getEmail() != null && !updateRequest.getEmail().equals(user.getEmail())) {
-            if (userRepository.existsByEmail(updateRequest.getEmail())) {
+        if (request.getEmail() != null && !request.getEmail().equals(user.getEmail())) {
+            if (userRepository.existsByEmail(request.getEmail())) {
                 throw new BadRequestException(ErrorMessages.EMAIL_ALREADY_EXISTS);
             }
         }
 
         // Check if phone is being changed and is available
-        if (updateRequest.getPhoneNumber() != null && !updateRequest.getPhoneNumber().equals(user.getPhoneNumber())) {
-            if (userRepository.existsByPhoneNumber(updateRequest.getPhoneNumber())) {
+        if (request.getPhoneNumber() != null && !request.getPhoneNumber().equals(user.getPhoneNumber())) {
+            if (userRepository.existsByPhoneNumber(request.getPhoneNumber())) {
                 throw new BadRequestException(ErrorMessages.PHONE_ALREADY_EXISTS);
             }
         }
 
-        userMapper.updateUserFromDTO(updateRequest, user);
+        // Update fields
+        user.setFirstName(request.getFirstName());
+        user.setLastName(request.getLastName());
+        if (request.getEmail() != null) {
+            user.setEmail(request.getEmail());
+        }
+        user.setPhoneNumber(request.getPhoneNumber());
+        if (request.getProfileImage() != null) {
+            user.setProfilePicture(request.getProfileImage());
+        }
+
         user = userRepository.save(user);
 
         return userMapper.toDTO(user);
@@ -90,25 +102,29 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public void enableUser(String userId) {
-        log.info("Enabling user: {}", userId);
+    public UserDTO updateUserStatus(String userId, UserStatusUpdateRequestDTO request) {
+        log.info("Updating status for user {} to enabled={}", userId, request.getEnabled());
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.USER_NOT_FOUND));
 
-        user.setEnabled(true);
-        userRepository.save(user);
+        user.setEnabled(request.getEnabled());
+        user = userRepository.save(user);
+
+        return userMapper.toDTO(user);
     }
 
     @Override
-    public void disableUser(String userId) {
-        log.info("Disabling user: {}", userId);
+    public UserDTO updateUserRole(String userId, UserRoleUpdateRequestDTO request) {
+        log.info("Updating role for user {} to {}", userId, request.getRole());
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.USER_NOT_FOUND));
 
-        user.setEnabled(false);
-        userRepository.save(user);
+        user.setRole(request.getRole());
+        user = userRepository.save(user);
+
+        return userMapper.toDTO(user);
     }
 
     @Override
@@ -165,18 +181,24 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
-    public void changePassword(String userId, String oldPassword, String newPassword) {
-        log.info("Changing password for user: {}", userId);
+    public UserDTO changePassword(String userId, ChangePasswordRequestDTO request) {
+        log.info("Changing password for user {}", userId);
 
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.USER_NOT_FOUND));
 
-        if (!passwordEncoder.matches(oldPassword, user.getPassword())) {
+        if (!passwordEncoder.matches(request.getCurrentPassword(), user.getPassword())) {
             throw new BadRequestException("Current password is incorrect");
         }
 
-        user.setPassword(passwordEncoder.encode(newPassword));
-        userRepository.save(user);
+        if (!request.getNewPassword().equals(request.getConfirmPassword())) {
+            throw new BadRequestException("New password and confirm password do not match");
+        }
+
+        user.setPassword(passwordEncoder.encode(request.getNewPassword()));
+        user = userRepository.save(user);
+
+        return userMapper.toDTO(user);
     }
 
     @Override

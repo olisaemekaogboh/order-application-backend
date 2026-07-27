@@ -1,13 +1,13 @@
 package com.inkfront.logisticsApplication.controller.admin;
 
+import com.inkfront.logisticsApplication.dto.request.admin.SystemConfigUpdateRequestDTO;
 import com.inkfront.logisticsApplication.dto.response.admin.SystemConfigDTO;
 import com.inkfront.logisticsApplication.dto.response.common.ApiResponseDTO;
-
-import com.inkfront.logisticsApplication.service.interfaces.*;
+import com.inkfront.logisticsApplication.service.interfaces.SystemConfigService;
 import com.inkfront.logisticsApplication.domain.constants.SuccessMessages;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
-
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
@@ -20,11 +20,9 @@ import java.util.List;
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
 @Tag(name = "Admin Management", description = "Admin management endpoints")
-public class SystemConfigController {
-
+public class AdminSystemConfigController {
 
     private final SystemConfigService systemConfigService;
-
 
     @GetMapping("/system/configs")
     @Operation(summary = "Get system configurations")
@@ -34,14 +32,13 @@ public class SystemConfigController {
         return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, response));
     }
 
-    @PutMapping("/system/configs")
+    @PutMapping("/system/configs/{key}")
     @Operation(summary = "Update system configuration")
     public ResponseEntity<ApiResponseDTO<SystemConfigDTO>> updateSystemConfig(
-            @RequestParam String key,
-            @RequestParam String value) {
+            @PathVariable String key,
+            @Valid @RequestBody SystemConfigUpdateRequestDTO request) {
         log.info("Update system config request for key: {}", key);
-        SystemConfigDTO response = systemConfigService.updateConfig(key, value);
+        SystemConfigDTO response = systemConfigService.updateConfig(key, request);
         return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.CONFIG_UPDATED, response));
     }
-
 }

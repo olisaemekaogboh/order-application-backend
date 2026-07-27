@@ -3,14 +3,17 @@ package com.inkfront.logisticsApplication.controller.pricing;
 import com.inkfront.logisticsApplication.domain.constants.SuccessMessages;
 import com.inkfront.logisticsApplication.domain.enums.VehicleType;
 import com.inkfront.logisticsApplication.dto.request.admin.PricingConfigRequestDTO;
+import com.inkfront.logisticsApplication.dto.request.pricing.PriceCalculationRequestDTO;
 import com.inkfront.logisticsApplication.dto.response.admin.PricingConfigDTO;
 import com.inkfront.logisticsApplication.dto.response.common.ApiResponseDTO;
+import com.inkfront.logisticsApplication.dto.response.pricing.PriceCalculationResponseDTO;
 import com.inkfront.logisticsApplication.service.interfaces.PricingService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -88,28 +91,33 @@ public class PricingController {
 
     @PostMapping
     @Operation(summary = "Create pricing configuration")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN')")
     public ResponseEntity<ApiResponseDTO<PricingConfigDTO>> createPricingConfig(
             @Valid @RequestBody PricingConfigRequestDTO request) {
 
         log.info("Create pricing configuration {}", request.getVehicleType());
 
-        return ResponseEntity.ok(
-                ApiResponseDTO.success(
-                        SuccessMessages.PRICING_UPDATED,
-                        pricingService.createPricingConfig(request)
-                )
-        );
+        return ResponseEntity.status(HttpStatus.CREATED)
+                .body(
+                        ApiResponseDTO.success(
+                                SuccessMessages.CREATED_SUCCESSFULLY,
+                                pricingService.createPricingConfig(request)
+                        )
+                );
     }
 
     @PutMapping("/{configId}")
     @Operation(summary = "Update pricing configuration")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN')")
     public ResponseEntity<ApiResponseDTO<PricingConfigDTO>> updatePricingConfig(
             @PathVariable String configId,
             @Valid @RequestBody PricingConfigRequestDTO request) {
 
-        log.info("Update pricing configuration {}", configId);
+        log.info(
+                "Updating pricing configuration {} for {}",
+                configId,
+                request.getVehicleType()
+        );
 
         return ResponseEntity.ok(
                 ApiResponseDTO.success(
@@ -121,7 +129,7 @@ public class PricingController {
 
     @PutMapping("/{configId}/activate")
     @Operation(summary = "Activate pricing configuration")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN')")
     public ResponseEntity<ApiResponseDTO<Void>> activatePricingConfig(
             @PathVariable String configId) {
 
@@ -137,7 +145,7 @@ public class PricingController {
 
     @PutMapping("/{configId}/deactivate")
     @Operation(summary = "Deactivate pricing configuration")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN')")
     public ResponseEntity<ApiResponseDTO<Void>> deactivatePricingConfig(
             @PathVariable String configId) {
 
@@ -161,8 +169,22 @@ public class PricingController {
 
         return ResponseEntity.ok(
                 ApiResponseDTO.success(
-                        SuccessMessages.PRICING_UPDATED,
+                        SuccessMessages.PRICING_DELETED,
                         null
+                )
+        );
+    }
+    @PostMapping("/calculate")
+    @Operation(summary = "Calculate delivery price")
+    public ResponseEntity<ApiResponseDTO<PriceCalculationResponseDTO>> calculatePrice(
+            @Valid @RequestBody PriceCalculationRequestDTO request) {
+
+        log.info("Calculating price for vehicle {}", request.getVehicleType());
+
+        return ResponseEntity.ok(
+                ApiResponseDTO.success(
+                        "Price calculated successfully",
+                        pricingService.calculatePrice(request)
                 )
         );
     }

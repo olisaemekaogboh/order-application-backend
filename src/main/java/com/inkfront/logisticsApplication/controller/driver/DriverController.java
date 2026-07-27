@@ -1,6 +1,8 @@
 package com.inkfront.logisticsApplication.controller.driver;
 
 import com.inkfront.logisticsApplication.dto.request.driver.DriverAssignmentRequestDTO;
+import com.inkfront.logisticsApplication.dto.request.driver.DriverAvailabilityRequestDTO;
+import com.inkfront.logisticsApplication.dto.request.driver.DriverLocationRequestDTO;
 import com.inkfront.logisticsApplication.dto.request.driver.DriverRegistrationRequestDTO;
 import com.inkfront.logisticsApplication.dto.request.driver.DriverUpdateRequestDTO;
 import com.inkfront.logisticsApplication.dto.response.common.ApiResponseDTO;
@@ -57,6 +59,7 @@ public class DriverController {
         DriverDTO response = driverService.getDriverById(driverId);
         return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, response));
     }
+
     @GetMapping("/me")
     @Operation(summary = "Get current driver's profile")
     public ResponseEntity<ApiResponseDTO<DriverDTO>> getMyProfile(
@@ -77,6 +80,7 @@ public class DriverController {
                 )
         );
     }
+
     @GetMapping("/email/{email}")
     @Operation(summary = "Get driver by email")
     public ResponseEntity<ApiResponseDTO<DriverDTO>> getDriverByEmail(@PathVariable String email) {
@@ -126,51 +130,50 @@ public class DriverController {
 
     @PutMapping("/me/availability")
     @Operation(summary = "Update current driver availability")
-    public ResponseEntity<ApiResponseDTO<Void>> updateAvailability(
+    public ResponseEntity<ApiResponseDTO<DriverDTO>> updateAvailability(
             Authentication authentication,
-            @RequestParam boolean available) {
+            @Valid @RequestBody DriverAvailabilityRequestDTO request) {
 
         AuthenticatedUser user =
                 (AuthenticatedUser) authentication.getPrincipal();
 
         log.info("Update availability for driver: {}", user.getEmail());
 
-        driverService.updateAvailability(
-                user.getId(),
-                available
-        );
+        DriverDTO response =
+                driverService.updateAvailability(
+                        user.getId(),
+                        request
+                );
 
         return ResponseEntity.ok(
                 ApiResponseDTO.success(
-                        "Driver availability updated successfully",
-                        null
+                        SuccessMessages.DRIVER_UPDATED,
+                        response
                 )
         );
     }
+
     @PutMapping("/me/location")
     @Operation(summary = "Update current driver location")
-    public ResponseEntity<ApiResponseDTO<Void>> updateLocation(
+    public ResponseEntity<ApiResponseDTO<DriverDTO>> updateLocation(
             Authentication authentication,
-            @RequestParam Double latitude,
-            @RequestParam Double longitude,
-            @RequestParam(required = false) String location) {
+            @Valid @RequestBody DriverLocationRequestDTO request) {
 
         AuthenticatedUser user =
                 (AuthenticatedUser) authentication.getPrincipal();
 
         log.info("Update location for driver: {}", user.getEmail());
 
-        driverService.updateLocation(
-                user.getId(),
-                latitude,
-                longitude,
-                location
-        );
+        DriverDTO response =
+                driverService.updateLocation(
+                        user.getId(),
+                        request
+                );
 
         return ResponseEntity.ok(
                 ApiResponseDTO.success(
-                        "Driver location updated successfully",
-                        null
+                        SuccessMessages.DRIVER_UPDATED,
+                        response
                 )
         );
     }
@@ -197,6 +200,7 @@ public class DriverController {
                 )
         );
     }
+
     @GetMapping("/me/earnings/paginated")
     @Operation(summary = "Get current driver earnings paginated")
     public ResponseEntity<ApiResponseDTO<PaginatedResponseDTO<DriverEarningDTO>>> getDriverEarningsPaginated(
@@ -223,6 +227,7 @@ public class DriverController {
                 )
         );
     }
+
     @GetMapping("/me/earnings/total")
     @Operation(summary = "Get current driver total earnings")
     public ResponseEntity<ApiResponseDTO<Double>> getDriverTotalEarnings(
@@ -245,6 +250,7 @@ public class DriverController {
                 )
         );
     }
+
     @GetMapping("/me/earnings/unpaid")
     @Operation(summary = "Get current driver unpaid earnings")
     public ResponseEntity<ApiResponseDTO<Double>> getDriverUnpaidEarnings(
@@ -267,8 +273,6 @@ public class DriverController {
                 )
         );
     }
-
-
 
     @GetMapping("/stats")
     @Operation(summary = "Get driver statistics")

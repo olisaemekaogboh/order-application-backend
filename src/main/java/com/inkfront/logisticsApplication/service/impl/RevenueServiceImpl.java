@@ -1,16 +1,23 @@
 package com.inkfront.logisticsApplication.service.impl;
 
+import com.inkfront.logisticsApplication.domain.entity.DriverEarning;
 import com.inkfront.logisticsApplication.domain.entity.Order;
 import com.inkfront.logisticsApplication.domain.entity.RevenueReport;
 import com.inkfront.logisticsApplication.domain.enums.OrderStatus;
+import com.inkfront.logisticsApplication.domain.enums.PaymentMethod;
+import com.inkfront.logisticsApplication.domain.enums.PaymentStatus;
 import com.inkfront.logisticsApplication.domain.enums.ReportPeriod;
 import com.inkfront.logisticsApplication.dto.request.admin.RevenueReportRequestDTO;
+import com.inkfront.logisticsApplication.dto.request.revenue.*;
 import com.inkfront.logisticsApplication.dto.response.revenue.*;
 import com.inkfront.logisticsApplication.exception.BadRequestException;
+import com.inkfront.logisticsApplication.exception.ResourceNotFoundException;
 import com.inkfront.logisticsApplication.mapper.RevenueReportMapper;
 import com.inkfront.logisticsApplication.repository.OrderRepository;
 import com.inkfront.logisticsApplication.repository.RevenueReportRepository;
 import com.inkfront.logisticsApplication.repository.DriverEarningRepository;
+import com.inkfront.logisticsApplication.repository.DriverRepository;
+import com.inkfront.logisticsApplication.repository.PaymentTransactionRepository;
 import com.inkfront.logisticsApplication.service.interfaces.RevenueService;
 import com.inkfront.logisticsApplication.util.DateUtils;
 
@@ -36,7 +43,11 @@ public class RevenueServiceImpl implements RevenueService {
     private final OrderRepository orderRepository;
     private final RevenueReportRepository revenueReportRepository;
     private final DriverEarningRepository driverEarningRepository;
+    private final DriverRepository driverRepository;
+    private final PaymentTransactionRepository paymentTransactionRepository;
     private final RevenueReportMapper revenueReportMapper;
+
+    // ==================== EXISTING METHODS (unchanged) ====================
 
     @Override
     public RevenueReportDTO generateRevenueReport(RevenueReportRequestDTO request) {
@@ -67,16 +78,13 @@ public class RevenueServiceImpl implements RevenueService {
             }
         }
 
-        // Convert to LocalDateTime for query
         LocalDateTime startDateTime = startDate.atStartOfDay();
         LocalDateTime endDateTime = endDate.atTime(23, 59, 59);
 
-        // Get orders for the period
         List<Order> orders = orderRepository.findOrdersBetweenDatesAndStatus(
                 startDateTime, endDateTime, OrderStatus.DELIVERED
         );
 
-        // Calculate revenue metrics
         double totalRevenue = orders.stream()
                 .mapToDouble(Order::getTotalPrice)
                 .sum();
@@ -84,14 +92,12 @@ public class RevenueServiceImpl implements RevenueService {
         long totalOrders = orders.size();
         double averageOrderValue = totalOrders > 0 ? totalRevenue / totalOrders : 0.0;
 
-        // Get commission and driver payouts
         Double totalCommission = driverEarningRepository.sumAllCommissionsBetweenDates(startDateTime, endDateTime);
         Double totalDriverPayout = driverEarningRepository.sumAllEarningsBetweenDates(startDateTime, endDateTime);
 
         totalCommission = totalCommission != null ? totalCommission : 0.0;
         totalDriverPayout = totalDriverPayout != null ? totalDriverPayout : 0.0;
 
-        // Create report
         RevenueReport report = new RevenueReport();
         report.setReportPeriod(request.getPeriod());
         report.setStartDate(startDate);
@@ -109,7 +115,6 @@ public class RevenueServiceImpl implements RevenueService {
 
         RevenueReportDTO reportDTO = revenueReportMapper.toDTO(report);
 
-        // Add breakdowns if requested
         if (request.isIncludeBreakdown()) {
             reportDTO.setDailyBreakdown(getDailyRevenueRange(startDate, endDate));
             reportDTO.setRevenueByState(getRevenueByState(orders));
@@ -215,7 +220,6 @@ public class RevenueServiceImpl implements RevenueService {
         monthlyRevenue.setCurrency("NGN");
         monthlyRevenue.setWeeklyBreakdown(weeklyBreakdown);
 
-        // Breakdown by day of month
         Map<Integer, Double> dayBreakdown = new HashMap<>();
         for (int day = 1; day <= endDate.getDayOfMonth(); day++) {
             LocalDate dayDate = LocalDate.of(year, month, day);
@@ -263,14 +267,12 @@ public class RevenueServiceImpl implements RevenueService {
                         MonthlyRevenueDTO::getTotalRevenue
                 )));
 
-        // Calculate year over year growth
         YearlyRevenueDTO previousYear = getYearlyRevenue(year - 1);
         if (previousYear.getTotalRevenue() > 0) {
             double growth = ((yearlyRevenue.getTotalRevenue() - previousYear.getTotalRevenue()) / previousYear.getTotalRevenue()) * 100;
             yearlyRevenue.setYearOverYearGrowth(growth);
         }
 
-        // Calculate quarter over quarter growth
         Map<Integer, Double> quarterlyBreakdown = new HashMap<>();
         for (int quarter = 1; quarter <= 4; quarter++) {
             int startMonth = (quarter - 1) * 3 + 1;
@@ -401,12 +403,201 @@ public class RevenueServiceImpl implements RevenueService {
         return total != null ? total : 0.0;
     }
 
+    // ==================== NEW METHODS USING REQUEST DTOs ====================
+
+    @Override
+    public DriverEarningsReportDTO getDriverEarnings(DriverEarningsReportRequestDTO request) {
+        log.info("Generating earnings report for driver {} from {} to {}",
+                request.getDriverId(), request.getStartDate(), request.getEndDate());
+
+        if (!driverRepository.existsById(request.getDriverId())) {
+            throw new ResourceNotFoundException("Driver not found: " + request.getDriverId());
+        }
+
+        LocalDateTime start = request.getStartDate().atStartOfDay();
+        LocalDateTime end = request.getEndDate().atTime(23, 59, 59);
+
+        // Fetch all earnings for this driver in the date range
+        List<DriverEarning> earnings = driverEarningRepository.findDriverEarningsBetweenDates(
+                request.getDriverId(), start, end);
+
+        double totalEarnings = earnings.stream().mapToDouble(DriverEarning::getAmount).sum();
+        double totalCommission = earnings.stream().mapToDouble(DriverEarning::getCommission).sum();
+        long totalDeliveries = earnings.size();
+
+        double netEarnings = totalEarnings - totalCommission;
+        double avgPerDelivery = totalDeliveries > 0 ? totalEarnings / totalDeliveries : 0.0;
+
+        // Daily breakdown
+        Map<String, Double> earningsByDay = new LinkedHashMap<>();
+        LocalDate current = request.getStartDate();
+        while (!current.isAfter(request.getEndDate())) {
+            LocalDateTime dayStart = current.atStartOfDay();
+            LocalDateTime dayEnd = current.atTime(23, 59, 59);
+            double dayTotal = earnings.stream()
+                    .filter(e -> !e.getEarningDate().isBefore(dayStart) && !e.getEarningDate().isAfter(dayEnd))
+                    .mapToDouble(DriverEarning::getAmount)
+                    .sum();
+            earningsByDay.put(current.toString(), dayTotal);
+            current = current.plusDays(1);
+        }
+
+        String driverName = driverRepository.findById(request.getDriverId())
+                .map(d -> d.getName() )
+                .orElse("Unknown");
+
+        return DriverEarningsReportDTO.builder()
+                .driverId(request.getDriverId())
+                .driverName(driverName)
+                .totalEarnings(totalEarnings)
+                .totalCommission(totalCommission)
+                .netEarnings(netEarnings)
+                .totalDeliveries(totalDeliveries)
+                .averageEarningPerDelivery(avgPerDelivery)
+                .earningsByDay(earningsByDay)
+                .currency("NGN")
+                .build();
+    }
+
+    @Override
+    public PaymentReportDTO getPaymentReport(PaymentReportRequestDTO request) {
+        log.info("Generating payment report from {} to {} with status {} and method {}",
+                request.getStartDate(), request.getEndDate(), request.getPaymentStatus(), request.getPaymentMethod());
+
+        LocalDateTime start = request.getStartDate().atStartOfDay();
+        LocalDateTime end = request.getEndDate().atTime(23, 59, 59);
+
+        List<Order> orders = orderRepository.findOrdersBetweenDatesAndStatus(start, end, OrderStatus.DELIVERED);
+
+        if (request.getPaymentStatus() != null) {
+            orders = orders.stream()
+                    .filter(o -> o.getPaymentStatus() == request.getPaymentStatus())
+                    .collect(Collectors.toList());
+        }
+        if (request.getPaymentMethod() != null) {
+            orders = orders.stream()
+                    .filter(o -> o.getPaymentMethod() == request.getPaymentMethod())
+                    .collect(Collectors.toList());
+        }
+
+        Double totalAmount = orders.stream().mapToDouble(Order::getTotalPrice).sum();
+        Long totalTransactions = (long) orders.size();
+
+        Map<PaymentStatus, Long> countByStatus = orders.stream()
+                .collect(Collectors.groupingBy(Order::getPaymentStatus, Collectors.counting()));
+
+        Map<PaymentMethod, Double> amountByMethod = orders.stream()
+                .filter(o -> o.getPaymentMethod() != null)
+                .collect(Collectors.groupingBy(Order::getPaymentMethod,
+                        Collectors.summingDouble(Order::getTotalPrice)));
+
+        long paidCount = orders.stream()
+                .filter(o -> o.getPaymentStatus() == PaymentStatus.PAID)
+                .count();
+        double successRate = totalTransactions > 0 ? (double) paidCount / totalTransactions * 100 : 0.0;
+
+        return PaymentReportDTO.builder()
+                .totalAmount(totalAmount)
+                .totalTransactions(totalTransactions)
+                .transactionCountByStatus(countByStatus)
+                .amountByMethod(amountByMethod)
+                .successRate(successRate)
+                .currency("NGN")
+                .build();
+    }
+
+    @Override
+    public DriverPayoutDTO processDriverPayout(DriverPayoutRequestDTO request) {
+        log.info("Processing payout of {} for driver {}", request.getAmount(), request.getDriverId());
+
+        driverRepository.findById(request.getDriverId())
+                .orElseThrow(() -> new ResourceNotFoundException("Driver not found: " + request.getDriverId()));
+
+        // Use sumUnpaidNetEarnings to get the actual unpaid net amount (after commission)
+        Double unpaidEarnings = driverEarningRepository.sumUnpaidNetEarnings(request.getDriverId());
+        if (unpaidEarnings == null) unpaidEarnings = 0.0;
+
+        if (request.getAmount() > unpaidEarnings) {
+            throw new BadRequestException("Insufficient unpaid earnings. Available: " + unpaidEarnings);
+        }
+
+        // Get unpaid earnings list using the existing method
+        List<DriverEarning> unpaid = driverEarningRepository.findByDriverIdAndPaidFalse(request.getDriverId());
+        double remaining = request.getAmount();
+        for (DriverEarning earning : unpaid) {
+            if (remaining <= 0) break;
+            double amountToPay = Math.min(earning.getNetAmount(), remaining);
+            earning.setPaid(true);
+            earning.setPaidDate(LocalDateTime.now());
+            remaining -= amountToPay;
+            driverEarningRepository.save(earning);
+        }
+
+        String transactionRef = "PAY-" + System.currentTimeMillis();
+
+        return DriverPayoutDTO.builder()
+                .payoutId(UUID.randomUUID().toString())
+                .driverId(request.getDriverId())
+                .amount(request.getAmount())
+                .status("SUCCESS")
+                .transactionReference(transactionRef)
+                .processedAt(LocalDateTime.now())
+                .remarks(request.getRemarks())
+                .newBalance(unpaidEarnings - request.getAmount())
+                .build();
+    }
+
+    @Override
+    public CommissionReportDTO getCommissionReport(CommissionReportRequestDTO request) {
+        log.info("Generating commission report from {} to {}", request.getStartDate(), request.getEndDate());
+
+        LocalDateTime start = request.getStartDate().atStartOfDay();
+        LocalDateTime end = request.getEndDate().atTime(23, 59, 59);
+
+        // Total commission
+        Double totalCommission = driverEarningRepository.sumAllCommissionsBetweenDates(start, end);
+        if (totalCommission == null) totalCommission = 0.0;
+
+        // Total delivered orders in the period
+        List<Order> orders = orderRepository.findOrdersBetweenDatesAndStatus(start, end, OrderStatus.DELIVERED);
+        Long totalOrders = (long) orders.size();
+
+        double avgCommission = totalOrders > 0 ? totalCommission / totalOrders : 0.0;
+
+        // Commission by day – we can compute per day using the same repository method
+        Map<String, Double> commissionByDay = new LinkedHashMap<>();
+        LocalDate current = request.getStartDate();
+        while (!current.isAfter(request.getEndDate())) {
+            LocalDateTime dayStart = current.atStartOfDay();
+            LocalDateTime dayEnd = current.atTime(23, 59, 59);
+            Double dayCommission = driverEarningRepository.sumAllCommissionsBetweenDates(dayStart, dayEnd);
+            commissionByDay.put(current.toString(), dayCommission != null ? dayCommission : 0.0);
+            current = current.plusDays(1);
+        }
+
+        // Per‑driver commission breakdown is not directly available from the repository.
+        // We could compute it by querying each driver individually, but that would be expensive.
+        // To avoid modifying the repository, we leave it empty and log a warning.
+        log.warn("Per‑driver commission breakdown is not available; returning empty map.");
+        Map<String, Double> commissionByDriver = new HashMap<>();
+
+        return CommissionReportDTO.builder()
+                .totalCommission(totalCommission)
+                .totalOrders(totalOrders)
+                .averageCommissionPerOrder(avgCommission)
+                .commissionByDriver(commissionByDriver)
+                .commissionByDay(commissionByDay)
+                .currency("NGN")
+                .build();
+    }
+
+    // ==================== PRIVATE HELPERS (unchanged) ====================
+
     private Map<String, Double> getRevenueByState(List<Order> orders) {
         return orders.stream()
                 .collect(Collectors.groupingBy(
                         order -> {
                             String location = order.getDeliveryLocation();
-                            // Extract state from location (assuming format: "City, State, Country")
                             String[] parts = location.split(",");
                             return parts.length >= 2 ? parts[1].trim() : "Unknown";
                         },

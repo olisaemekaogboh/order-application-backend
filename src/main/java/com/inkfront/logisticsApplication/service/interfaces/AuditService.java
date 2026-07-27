@@ -1,39 +1,54 @@
 package com.inkfront.logisticsApplication.service.interfaces;
 
+import com.inkfront.logisticsApplication.dto.request.audit.*;
+import com.inkfront.logisticsApplication.dto.response.audit.*;
 import com.inkfront.logisticsApplication.dto.response.common.AuditLogDTO;
 import com.inkfront.logisticsApplication.dto.response.common.PaginatedResponseDTO;
 
 import java.time.LocalDateTime;
-import java.util.List;
 
 public interface AuditService {
 
-    PaginatedResponseDTO<AuditLogDTO> getAuditLogs(int page, int size);
+    // ===== New DTO‑based methods =====
 
-    AuditLogDTO getAuditLogById(String auditId);
+    PaginatedResponseDTO<AuditLogDTO> searchAudits(AuditSearchRequestDTO request);
 
-    PaginatedResponseDTO<AuditLogDTO> getAuditLogsByUser(
-            String userId,
-            int page,
-            int size);
+    UserActivityDTO getUserActivity(UserActivityRequestDTO request);
 
-    PaginatedResponseDTO<AuditLogDTO> getAuditLogsByAction(
-            String action,
-            int page,
-            int size);
+    ExportResponseDTO exportAudits(AuditExportRequestDTO request);
 
-    PaginatedResponseDTO<AuditLogDTO> getAuditLogsByEntity(
-            String entityType,
-            int page,
-            int size);
+    AuditRetentionDTO updateRetentionPolicy(AuditRetentionRequestDTO request);
 
-    PaginatedResponseDTO<AuditLogDTO> getAuditLogsByDateRange(
-            LocalDateTime start,
-            LocalDateTime end,
-            int page,
-            int size);
+    // ===== Legacy methods (kept for backward compatibility, but can be removed) =====
 
-    void deleteAuditLog(String auditId);
+    @Deprecated
+    void logAction(String userIdentifier, String action, String entityType, String entityId, String details);
 
-    void cleanupAuditLogs(int olderThanDays);
+    @Deprecated
+    void logActionWithMetadata(String userIdentifier, String action, String entityType,
+                               String entityId, String details, String ipAddress, String userAgent);
+
+    @Deprecated
+    AuditLogDTO getAuditLogById(String logId);
+
+    @Deprecated
+    PaginatedResponseDTO<AuditLogDTO> getAllAuditLogs(int page, int size, String sortBy, String sortDirection);
+
+    @Deprecated
+    PaginatedResponseDTO<AuditLogDTO> getUserAuditLogs(String userId, int page, int size);
+
+    @Deprecated
+    PaginatedResponseDTO<AuditLogDTO> getActionAuditLogs(String action, int page, int size);
+
+    @Deprecated
+    PaginatedResponseDTO<AuditLogDTO> getEntityAuditLogs(String entityType, String entityId, int page, int size);
+
+    @Deprecated
+    void deleteAuditLog(String logId);
+
+    @Deprecated
+    void cleanupOldAuditLogs(int daysToKeep);
+
+    @Deprecated
+    long countAuditLogsSince(LocalDateTime date);
 }

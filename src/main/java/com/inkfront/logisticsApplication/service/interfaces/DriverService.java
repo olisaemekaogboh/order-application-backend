@@ -1,8 +1,6 @@
 package com.inkfront.logisticsApplication.service.interfaces;
 
-import com.inkfront.logisticsApplication.dto.request.driver.DriverAssignmentRequestDTO;
-import com.inkfront.logisticsApplication.dto.request.driver.DriverRegistrationRequestDTO;
-import com.inkfront.logisticsApplication.dto.request.driver.DriverUpdateRequestDTO;
+import com.inkfront.logisticsApplication.dto.request.driver.*;
 import com.inkfront.logisticsApplication.dto.response.common.PaginatedResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.driver.DriverDTO;
 import com.inkfront.logisticsApplication.dto.response.driver.DriverEarningDTO;
@@ -48,16 +46,15 @@ public interface DriverService {
 
     void deleteDriver(
             String driverId);
-
-    void updateAvailability(
+    DriverDTO updateAvailability(
             String driverId,
-            boolean available);
+            DriverAvailabilityRequestDTO request
+    );
 
-    void updateLocation(
+    DriverDTO updateLocation(
             String driverId,
-            Double latitude,
-            Double longitude,
-            String location);
+            DriverLocationRequestDTO request
+    );
 
     List<DriverEarningDTO> getDriverEarnings(
             String driverId);

@@ -1,20 +1,20 @@
 package com.inkfront.logisticsApplication.controller.audit;
 
 import com.inkfront.logisticsApplication.domain.constants.SuccessMessages;
-import com.inkfront.logisticsApplication.dto.response.audit.AuditLogDTO;
+import com.inkfront.logisticsApplication.dto.request.audit.*;
+import com.inkfront.logisticsApplication.dto.response.audit.*;
 import com.inkfront.logisticsApplication.dto.response.common.ApiResponseDTO;
+import com.inkfront.logisticsApplication.dto.response.common.AuditLogDTO;
 import com.inkfront.logisticsApplication.dto.response.common.PaginatedResponseDTO;
 import com.inkfront.logisticsApplication.service.interfaces.AuditService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
+import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
-
-import java.time.LocalDateTime;
 
 @Slf4j
 @RestController
@@ -25,22 +25,72 @@ public class AuditController {
 
     private final AuditService auditService;
 
-    @GetMapping
-    @Operation(summary = "Get all audit logs")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
-    public ResponseEntity<ApiResponseDTO<PaginatedResponseDTO<AuditLogDTO>>> getAuditLogs(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+    // ==================== NEW DTO‑BASED ENDPOINTS ====================
 
-        log.info("Fetching audit logs");
+    @PostMapping("/search")
+    @Operation(summary = "Search audit logs with filters (pagination, sorting)")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<ApiResponseDTO<PaginatedResponseDTO<AuditLogDTO>>> searchAudits(
+            @Valid @RequestBody AuditSearchRequestDTO request) {
+
+        log.info("Audit search request: userId={}, action={}, entityType={}, from {} to {}",
+                request.getUserId(), request.getAction(), request.getEntityType(),
+                request.getStartDate(), request.getEndDate());
+
+        PaginatedResponseDTO<AuditLogDTO> response = auditService.searchAudits(request);
 
         return ResponseEntity.ok(
-                ApiResponseDTO.success(
-                        SuccessMessages.DATA_RETRIEVED,
-                        auditService.getAuditLogs(page, size)
-                )
+                ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, response)
         );
     }
+
+    @PostMapping("/user-activity")
+    @Operation(summary = "Get user activity report")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<ApiResponseDTO<UserActivityDTO>> getUserActivity(
+            @Valid @RequestBody UserActivityRequestDTO request) {
+
+        log.info("User activity request for user: {}", request.getUserId());
+
+        UserActivityDTO response = auditService.getUserActivity(request);
+
+        return ResponseEntity.ok(
+                ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, response)
+        );
+    }
+
+    @PostMapping("/export")
+    @Operation(summary = "Export audit logs")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<ApiResponseDTO<ExportResponseDTO>> exportAudits(
+            @Valid @RequestBody AuditExportRequestDTO request) {
+
+        log.info("Audit export request: format={}, action={}, from {} to {}",
+                request.getFormat(), request.getAction(), request.getStartDate(), request.getEndDate());
+
+        ExportResponseDTO response = auditService.exportAudits(request);
+
+        return ResponseEntity.ok(
+                ApiResponseDTO.success("Export initiated successfully", response)
+        );
+    }
+
+    @PutMapping("/retention")
+    @Operation(summary = "Update audit retention policy")
+    @PreAuthorize("hasRole('SUPER_ADMIN')")
+    public ResponseEntity<ApiResponseDTO<AuditRetentionDTO>> updateRetentionPolicy(
+            @Valid @RequestBody AuditRetentionRequestDTO request) {
+
+        log.info("Update retention policy request: {} days", request.getRetentionDays());
+
+        AuditRetentionDTO response = auditService.updateRetentionPolicy(request);
+
+        return ResponseEntity.ok(
+                ApiResponseDTO.success("Retention policy updated", response)
+        );
+    }
+
+    // ==================== SIMPLE RETRIEVAL / MAINTENANCE ENDPOINTS ====================
 
     @GetMapping("/{auditId}")
     @Operation(summary = "Get audit log by ID")
@@ -48,89 +98,12 @@ public class AuditController {
     public ResponseEntity<ApiResponseDTO<AuditLogDTO>> getAuditLogById(
             @PathVariable String auditId) {
 
-        return ResponseEntity.ok(
-                ApiResponseDTO.success(
-                        SuccessMessages.DATA_RETRIEVED,
-                        auditService.getAuditLogById(auditId)
-                )
-        );
-    }
+        log.info("Get audit log by ID: {}", auditId);
 
-    @GetMapping("/user/{userId}")
-    @Operation(summary = "Get audit logs by user")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
-    public ResponseEntity<ApiResponseDTO<PaginatedResponseDTO<AuditLogDTO>>> getAuditLogsByUser(
-            @PathVariable String userId,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
+        AuditLogDTO response = auditService.getAuditLogById(auditId);
 
         return ResponseEntity.ok(
-                ApiResponseDTO.success(
-                        SuccessMessages.DATA_RETRIEVED,
-                        auditService.getAuditLogsByUser(userId, page, size)
-                )
-        );
-    }
-
-    @GetMapping("/action/{action}")
-    @Operation(summary = "Get audit logs by action")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
-    public ResponseEntity<ApiResponseDTO<PaginatedResponseDTO<AuditLogDTO>>> getAuditLogsByAction(
-            @PathVariable String action,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-
-        return ResponseEntity.ok(
-                ApiResponseDTO.success(
-                        SuccessMessages.DATA_RETRIEVED,
-                        auditService.getAuditLogsByAction(action, page, size)
-                )
-        );
-    }
-
-    @GetMapping("/entity/{entityType}")
-    @Operation(summary = "Get audit logs by entity")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
-    public ResponseEntity<ApiResponseDTO<PaginatedResponseDTO<AuditLogDTO>>> getAuditLogsByEntity(
-            @PathVariable String entityType,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size) {
-
-        return ResponseEntity.ok(
-                ApiResponseDTO.success(
-                        SuccessMessages.DATA_RETRIEVED,
-                        auditService.getAuditLogsByEntity(entityType, page, size)
-                )
-        );
-    }
-
-    @GetMapping("/date-range")
-    @Operation(summary = "Get audit logs within date range")
-    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
-    public ResponseEntity<ApiResponseDTO<PaginatedResponseDTO<AuditLogDTO>>> getAuditLogsByDateRange(
-
-            @RequestParam
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
-            LocalDateTime start,
-
-            @RequestParam
-            @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME)
-            LocalDateTime end,
-
-            @RequestParam(defaultValue = "0") int page,
-
-            @RequestParam(defaultValue = "20") int size) {
-
-        return ResponseEntity.ok(
-                ApiResponseDTO.success(
-                        SuccessMessages.DATA_RETRIEVED,
-                        auditService.getAuditLogsByDateRange(
-                                start,
-                                end,
-                                page,
-                                size
-                        )
-                )
+                ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, response)
         );
     }
 
@@ -140,30 +113,27 @@ public class AuditController {
     public ResponseEntity<ApiResponseDTO<Void>> deleteAuditLog(
             @PathVariable String auditId) {
 
+        log.info("Delete audit log: {}", auditId);
+
         auditService.deleteAuditLog(auditId);
 
         return ResponseEntity.ok(
-                ApiResponseDTO.success(
-                        "Audit log deleted successfully",
-                        null
-                )
+                ApiResponseDTO.success("Audit log deleted successfully", null)
         );
     }
 
     @DeleteMapping("/cleanup")
-    @Operation(summary = "Delete old audit logs")
+    @Operation(summary = "Delete old audit logs (older than specified days)")
     @PreAuthorize("hasRole('SUPER_ADMIN')")
     public ResponseEntity<ApiResponseDTO<Void>> cleanupAuditLogs(
             @RequestParam int olderThanDays) {
 
-        auditService.cleanupAuditLogs(olderThanDays);
+        log.info("Cleanup audit logs older than {} days", olderThanDays);
+
+        auditService.cleanupOldAuditLogs(olderThanDays);
 
         return ResponseEntity.ok(
-                ApiResponseDTO.success(
-                        "Audit cleanup completed",
-                        null
-                )
+                ApiResponseDTO.success("Audit cleanup completed successfully", null)
         );
     }
-
 }

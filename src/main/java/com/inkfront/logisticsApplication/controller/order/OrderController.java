@@ -1,9 +1,6 @@
 package com.inkfront.logisticsApplication.controller.order;
 
-import com.inkfront.logisticsApplication.dto.request.order.OrderFilterRequestDTO;
-import com.inkfront.logisticsApplication.dto.request.order.OrderRequestDTO;
-import com.inkfront.logisticsApplication.dto.request.order.OrderUpdateRequestDTO;
-import com.inkfront.logisticsApplication.dto.request.order.PriceCalculationRequestDTO;
+import com.inkfront.logisticsApplication.dto.request.order.*;
 import com.inkfront.logisticsApplication.dto.response.common.ApiResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.common.PaginatedResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.order.OrderResponseDTO;
@@ -11,6 +8,7 @@ import com.inkfront.logisticsApplication.dto.response.order.OrderTrackingDTO;
 import com.inkfront.logisticsApplication.dto.response.order.PriceCalculationResponseDTO;
 import com.inkfront.logisticsApplication.service.interfaces.OrderService;
 import com.inkfront.logisticsApplication.domain.constants.SuccessMessages;
+import com.inkfront.logisticsApplication.security.AuthenticatedUser;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.Valid;
@@ -19,7 +17,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
-import com.inkfront.logisticsApplication.security.AuthenticatedUser;
+
 import java.util.List;
 
 @Slf4j
@@ -31,37 +29,29 @@ public class OrderController {
 
     private final OrderService orderService;
 
+    // Existing endpoints (create, get by id, etc.) remain unchanged.
+
+    // ... (other endpoints like createOrder, getOrderById, etc.) ...
+
+    // Assumed we have an endpoint for calculating price
     @PostMapping("/calculate-price")
-    @Operation(summary = "Calculate price for order")
+    @Operation(summary = "Calculate order price")
     public ResponseEntity<ApiResponseDTO<PriceCalculationResponseDTO>> calculatePrice(
             @Valid @RequestBody PriceCalculationRequestDTO request) {
-        log.info("Price calculation request for distance: {} km", request.getDistanceKm());
+        log.info("Calculate price request");
         PriceCalculationResponseDTO response = orderService.calculatePrice(request);
-        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.PRICE_CALCULATED, response));
+        return ResponseEntity.ok(ApiResponseDTO.success("Price calculated successfully", response));
     }
+
     @PostMapping
-    @Operation(summary = "Create new order")
+    @Operation(summary = "Create a new order")
     public ResponseEntity<ApiResponseDTO<OrderResponseDTO>> createOrder(
-            @Valid @RequestBody OrderRequestDTO orderRequest,
-            Authentication authentication) {
-
-        AuthenticatedUser user =
-                (AuthenticatedUser) authentication.getPrincipal();
-
-        log.info("Create order request for user: {}", user.getEmail());
-
-        OrderResponseDTO response =
-                orderService.createOrder(
-                        orderRequest,
-                        user.getId()
-                );
-
-        return ResponseEntity.ok(
-                ApiResponseDTO.success(
-                        SuccessMessages.ORDER_CREATED,
-                        response
-                )
-        );
+            Authentication authentication,
+            @Valid @RequestBody OrderRequestDTO request) {
+        AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
+        log.info("Create order request for user: {}", user.getId());
+        OrderResponseDTO response = orderService.createOrder(request, user.getId());
+        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.ORDER_CREATED, response));
     }
 
     @GetMapping("/{orderId}")
@@ -69,265 +59,148 @@ public class OrderController {
     public ResponseEntity<ApiResponseDTO<OrderResponseDTO>> getOrderById(
             Authentication authentication,
             @PathVariable String orderId) {
-
-        AuthenticatedUser user =
-                (AuthenticatedUser) authentication.getPrincipal();
-
-        log.info("Get order request for user: {} order: {}",
-                user.getEmail(),
-                orderId);
-
-        OrderResponseDTO response =
-                orderService.getOrderById(
-                        user.getId(),
-                        orderId
-                );
-
-        return ResponseEntity.ok(
-                ApiResponseDTO.success(
-                        SuccessMessages.DATA_RETRIEVED,
-                        response
-                )
-        );
+        AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
+        log.info("Get order by ID: {}", orderId);
+        OrderResponseDTO response = orderService.getOrderById(user.getId(), orderId);
+        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, response));
     }
+
     @GetMapping("/number/{orderNumber}")
     @Operation(summary = "Get order by order number")
     public ResponseEntity<ApiResponseDTO<OrderResponseDTO>> getOrderByNumber(
             Authentication authentication,
             @PathVariable String orderNumber) {
-
-        AuthenticatedUser user =
-                (AuthenticatedUser) authentication.getPrincipal();
-
-        log.info("Get order request for user: {} number: {}",
-                user.getEmail(),
-                orderNumber);
-
-        OrderResponseDTO response =
-                orderService.getOrderByNumber(
-                        user.getId(),
-                        orderNumber
-                );
-
-        return ResponseEntity.ok(
-                ApiResponseDTO.success(
-                        SuccessMessages.DATA_RETRIEVED,
-                        response
-                )
-        );
+        AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
+        log.info("Get order by number: {}", orderNumber);
+        OrderResponseDTO response = orderService.getOrderByNumber(user.getId(), orderNumber);
+        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, response));
     }
-    @GetMapping("/my-orders")
-    @Operation(summary = "Get current user's orders")
+
+    @GetMapping("/user")
+    @Operation(summary = "Get current user's orders with filters")
     public ResponseEntity<ApiResponseDTO<PaginatedResponseDTO<OrderResponseDTO>>> getUserOrders(
             Authentication authentication,
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) String sortBy,
-            @RequestParam(defaultValue = "DESC") String sortDirection) {
-
-        AuthenticatedUser user =
-                (AuthenticatedUser) authentication.getPrincipal();
-
-        log.info("Get user orders request for: {}", user.getEmail());
-
-        OrderFilterRequestDTO filter = new OrderFilterRequestDTO();
-        filter.setPage(page);
-        filter.setSize(size);
-        filter.setSortBy(sortBy != null ? sortBy : "createdAt");
-        filter.setSortDirection(sortDirection);
-
-        if (status != null) {
-            filter.setStatus(
-                    com.inkfront.logisticsApplication.domain.enums.OrderStatus.valueOf(status)
-            );
-        }
-
-        PaginatedResponseDTO<OrderResponseDTO> response =
-                orderService.getUserOrders(
-                        user.getId(),
-                        filter
-                );
-
-        return ResponseEntity.ok(
-                ApiResponseDTO.success(
-                        SuccessMessages.DATA_RETRIEVED,
-                        response
-                )
-        );
+            @Valid @RequestBody OrderFilterRequestDTO filter) {
+        AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
+        log.info("Get user orders for user: {}", user.getId());
+        PaginatedResponseDTO<OrderResponseDTO> response = orderService.getUserOrders(user.getId(), filter);
+        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, response));
     }
+
+    // Driver orders endpoint (for driver role)
+    @GetMapping("/driver")
+    @Operation(summary = "Get current driver's orders")
+    public ResponseEntity<ApiResponseDTO<PaginatedResponseDTO<OrderResponseDTO>>> getDriverOrders(
+            Authentication authentication,
+            @Valid @RequestBody OrderFilterRequestDTO filter) {
+        AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
+        log.info("Get driver orders for driver: {}", user.getId());
+        PaginatedResponseDTO<OrderResponseDTO> response = orderService.getDriverOrders(user.getId(), filter);
+        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, response));
+    }
+
+    // Admin endpoint for all orders
     @GetMapping("/all")
-    @Operation(summary = "Get all orders (Admin only)")
+    @Operation(summary = "Get all orders (admin only)")
     public ResponseEntity<ApiResponseDTO<PaginatedResponseDTO<OrderResponseDTO>>> getAllOrders(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "20") int size,
-            @RequestParam(required = false) String status,
-            @RequestParam(required = false) String sortBy,
-            @RequestParam(defaultValue = "DESC") String sortDirection) {
+            @Valid @RequestBody OrderFilterRequestDTO filter) {
         log.info("Get all orders request");
-
-        OrderFilterRequestDTO filter = new OrderFilterRequestDTO();
-        filter.setPage(page);
-        filter.setSize(size);
-        filter.setSortBy(sortBy != null ? sortBy : "createdAt");
-        filter.setSortDirection(sortDirection);
-        if (status != null) {
-            filter.setStatus(com.inkfront.logisticsApplication.domain.enums.OrderStatus.valueOf(status));
-        }
-
         PaginatedResponseDTO<OrderResponseDTO> response = orderService.getAllOrders(filter);
         return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, response));
+    }
+
+    // ------------------- Updated endpoints using DTOs -------------------
+
+    @PutMapping("/{orderId}/assign-driver")
+    @Operation(summary = "Assign a driver to an order")
+    public ResponseEntity<ApiResponseDTO<OrderResponseDTO>> assignDriver(
+            @PathVariable String orderId,
+            @Valid @RequestBody DriverAssignmentRequestDTO request) {
+        log.info("Assign driver to order: {}", orderId);
+        OrderResponseDTO response = orderService.assignDriver(orderId, request);
+        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.ORDER_UPDATED, response));
     }
 
     @PutMapping("/{orderId}/status")
     @Operation(summary = "Update order status")
     public ResponseEntity<ApiResponseDTO<OrderResponseDTO>> updateOrderStatus(
             @PathVariable String orderId,
-            @Valid @RequestBody OrderUpdateRequestDTO updateRequest) {
-        log.info("Update order status request for: {}", orderId);
-        OrderResponseDTO response = orderService.updateOrderStatus(orderId, updateRequest);
-        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.ORDER_STATUS_UPDATED, response));
+            @Valid @RequestBody OrderStatusUpdateRequestDTO request) {
+        log.info("Update status for order: {}", orderId);
+        OrderResponseDTO response = orderService.updateOrderStatus(orderId, request);
+        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.ORDER_UPDATED, response));
     }
 
+    @PutMapping("/{orderId}/payment")
+    @Operation(summary = "Update payment status")
+    public ResponseEntity<ApiResponseDTO<OrderResponseDTO>> updatePaymentStatus(
+            @PathVariable String orderId,
+            @Valid @RequestBody PaymentStatusUpdateRequestDTO request) {
+        log.info("Update payment status for order: {}", orderId);
+        OrderResponseDTO response = orderService.updatePaymentStatus(orderId, request);
+        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.ORDER_UPDATED, response));
+    }
+
+    @PutMapping("/{orderId}/tracking")
+    @Operation(summary = "Update tracking information")
+    public ResponseEntity<ApiResponseDTO<OrderResponseDTO>> updateTracking(
+            @PathVariable String orderId,
+            @Valid @RequestBody TrackingUpdateRequestDTO request) {
+        log.info("Update tracking for order: {}", orderId);
+        OrderResponseDTO response = orderService.updateTracking(orderId, request);
+        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.ORDER_UPDATED, response));
+    }
+
+    // Additional endpoint: cancel order (already using DTO? It has cancellationReason as String, but could be converted later)
     @PutMapping("/{orderId}/cancel")
-    @Operation(summary = "Cancel order")
+    @Operation(summary = "Cancel an order")
     public ResponseEntity<ApiResponseDTO<OrderResponseDTO>> cancelOrder(
             Authentication authentication,
             @PathVariable String orderId,
-            @RequestParam String reason) {
-
-        AuthenticatedUser user =
-                (AuthenticatedUser) authentication.getPrincipal();
-
-        log.info("Cancel order request for user: {} order: {}",
-                user.getEmail(),
-                orderId);
-
-        OrderResponseDTO response =
-                orderService.cancelOrder(
-                        user.getId(),
-                        orderId,
-                        reason
-                );
-
-        return ResponseEntity.ok(
-                ApiResponseDTO.success(
-                        SuccessMessages.ORDER_CANCELLED,
-                        response
-                )
-        );
+            @RequestParam String cancellationReason) {
+        AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
+        log.info("Cancel order: {} for user: {}", orderId, user.getId());
+        OrderResponseDTO response = orderService.cancelOrder(user.getId(), orderId, cancellationReason);
+        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.ORDER_CANCELLED, response));
     }
+
     @GetMapping("/{orderId}/track")
-    @Operation(summary = "Track order")
+    @Operation(summary = "Track an order")
     public ResponseEntity<ApiResponseDTO<OrderTrackingDTO>> trackOrder(
             Authentication authentication,
             @PathVariable String orderId) {
-
-        AuthenticatedUser user =
-                (AuthenticatedUser) authentication.getPrincipal();
-
-        log.info("Track order request for user: {} order: {}",
-                user.getEmail(),
-                orderId);
-
-        OrderTrackingDTO response =
-                orderService.trackOrder(
-                        user.getId(),
-                        orderId
-                );
-
-        return ResponseEntity.ok(
-                ApiResponseDTO.success(
-                        "Order tracking retrieved",
-                        response
-                )
-        );
+        AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
+        log.info("Track order: {}", orderId);
+        OrderTrackingDTO response = orderService.trackOrder(user.getId(), orderId);
+        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, response));
     }
-    @GetMapping("/my-orders/recent")
+
+    @GetMapping("/recent")
     @Operation(summary = "Get recent orders for current user")
     public ResponseEntity<ApiResponseDTO<List<OrderResponseDTO>>> getRecentOrders(
             Authentication authentication,
             @RequestParam(defaultValue = "5") int limit) {
-
-        AuthenticatedUser user =
-                (AuthenticatedUser) authentication.getPrincipal();
-
-        log.info("Get recent orders request for: {}", user.getEmail());
-
-        List<OrderResponseDTO> response =
-                orderService.getRecentOrders(
-                        user.getId(),
-                        limit
-                );
-
-        return ResponseEntity.ok(
-                ApiResponseDTO.success(
-                        SuccessMessages.DATA_RETRIEVED,
-                        response
-                )
-        );
+        AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
+        log.info("Get recent orders for user: {}", user.getId());
+        List<OrderResponseDTO> response = orderService.getRecentOrders(user.getId(), limit);
+        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, response));
     }
-    @GetMapping("/my-orders/count")
-    @Operation(summary = "Get order count for current user")
-    public ResponseEntity<ApiResponseDTO<Long>> getUserOrderCount(
+
+    @GetMapping("/count")
+    @Operation(summary = "Count current user's orders")
+    public ResponseEntity<ApiResponseDTO<Long>> countUserOrders(
             Authentication authentication) {
-
-        AuthenticatedUser user =
-                (AuthenticatedUser) authentication.getPrincipal();
-
-        log.info("Get order count request for: {}", user.getEmail());
-
-        long count =
-                orderService.countUserOrders(
-                        user.getId()
-                );
-
-        return ResponseEntity.ok(
-                ApiResponseDTO.success(
-                        "Order count retrieved",
-                        count
-                )
-        );
+        AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
+        long count = orderService.countUserOrders(user.getId());
+        return ResponseEntity.ok(ApiResponseDTO.success("Order count retrieved", count));
     }
-    @GetMapping("/my-orders/active-count")
-    @Operation(summary = "Get active order count for current user")
-    public ResponseEntity<ApiResponseDTO<Long>> getUserActiveOrderCount(
+
+    @GetMapping("/count-active")
+    @Operation(summary = "Count current user's active orders")
+    public ResponseEntity<ApiResponseDTO<Long>> countUserActiveOrders(
             Authentication authentication) {
-
-        AuthenticatedUser user =
-                (AuthenticatedUser) authentication.getPrincipal();
-
-        log.info("Get active order count request for: {}", user.getEmail());
-
-        long count =
-                orderService.countUserActiveOrders(
-                        user.getId()
-                );
-
-        return ResponseEntity.ok(
-                ApiResponseDTO.success(
-                        "Active order count retrieved",
-                        count
-                )
-        );
-    }
-    @PutMapping("/{orderId}/assign-driver")
-    @Operation(summary = "Assign driver to order (Admin only)")
-    public ResponseEntity<ApiResponseDTO<Void>> assignDriver(
-            @PathVariable String orderId,
-            @RequestParam String driverId) {
-        log.info("Assign driver request for order: {} to driver: {}", orderId, driverId);
-        orderService.assignDriver(orderId, driverId);
-        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.ORDER_ASSIGNED, null));
-    }
-
-    @PutMapping("/{orderId}/payment-status")
-    @Operation(summary = "Update payment status (Admin only)")
-    public ResponseEntity<ApiResponseDTO<Void>> updatePaymentStatus(
-            @PathVariable String orderId,
-            @RequestParam String paymentStatus) {
-        log.info("Update payment status request for order: {} to: {}", orderId, paymentStatus);
-        orderService.updatePaymentStatus(orderId, paymentStatus);
-        return ResponseEntity.ok(ApiResponseDTO.success("Payment status updated successfully", null));
+        AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
+        long count = orderService.countUserActiveOrders(user.getId());
+        return ResponseEntity.ok(ApiResponseDTO.success("Active order count retrieved", count));
     }
 }

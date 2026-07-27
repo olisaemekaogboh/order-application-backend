@@ -46,4 +46,8 @@ public class SuccessMessages {
     public static final String DATA_RETRIEVED = "Data retrieved successfully";
     public static final String DATA_SAVED = "Data saved successfully";
     public static final String DATA_DELETED = "Data deleted successfully";
+    public static final String CREATED_SUCCESSFULLY = "Created successfully";
+    public static final String DELETED_SUCCESSFULLY = "Deleted Successfully";
+    public static final String UPDATED_SUCCESSFULLY = "Updated Successfully";
+    public static final String PRICING_DELETED = "Price Deleted Successful";
 }

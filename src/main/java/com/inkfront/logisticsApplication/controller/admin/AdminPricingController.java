@@ -23,7 +23,7 @@ import java.util.List;
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
 @Tag(name = "Admin Management", description = "Admin management endpoints")
-public class PricingController {
+public class AdminPricingController {
 
     private final PricingService pricingService;
 

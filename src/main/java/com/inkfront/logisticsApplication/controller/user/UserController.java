@@ -1,8 +1,7 @@
 package com.inkfront.logisticsApplication.controller.user;
 
 import com.inkfront.logisticsApplication.domain.constants.SuccessMessages;
-import com.inkfront.logisticsApplication.dto.request.user.AddressRequestDTO;
-import com.inkfront.logisticsApplication.dto.request.user.UserUpdateRequestDTO;
+import com.inkfront.logisticsApplication.dto.request.user.*;
 import com.inkfront.logisticsApplication.dto.response.common.ApiResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.user.AddressDTO;
 import com.inkfront.logisticsApplication.dto.response.user.UserDTO;
@@ -30,6 +29,8 @@ public class UserController {
     private final UserService userService;
     private final AddressService addressService;
 
+    // ========== Profile Endpoints ==========
+
     @GetMapping("/profile")
     @Operation(summary = "Get current user profile")
     public ResponseEntity<ApiResponseDTO<UserDTO>> getProfile(
@@ -50,13 +51,13 @@ public class UserController {
     @Operation(summary = "Update current user profile")
     public ResponseEntity<ApiResponseDTO<UserDTO>> updateProfile(
             Authentication authentication,
-            @Valid @RequestBody UserUpdateRequestDTO updateRequest) {
+            @Valid @RequestBody UpdateProfileRequestDTO request) {
 
         AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
 
         log.info("Update profile request for user: {}", user.getEmail());
 
-        UserDTO response = userService.updateUser(user.getId(), updateRequest);
+        UserDTO response = userService.updateProfile(user.getId(), request);
 
         return ResponseEntity.ok(
                 ApiResponseDTO.success(SuccessMessages.PROFILE_UPDATED, response)
@@ -82,21 +83,22 @@ public class UserController {
 
     @PostMapping("/change-password")
     @Operation(summary = "Change password")
-    public ResponseEntity<ApiResponseDTO<Void>> changePassword(
+    public ResponseEntity<ApiResponseDTO<UserDTO>> changePassword(
             Authentication authentication,
-            @RequestParam String oldPassword,
-            @RequestParam String newPassword) {
+            @Valid @RequestBody ChangePasswordRequestDTO request) {
 
         AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
 
         log.info("Change password request for user: {}", user.getEmail());
 
-        userService.changePassword(user.getId(), oldPassword, newPassword);
+        UserDTO response = userService.changePassword(user.getId(), request);
 
         return ResponseEntity.ok(
-                ApiResponseDTO.success("Password changed successfully", null)
+                ApiResponseDTO.success("Password changed successfully", response)
         );
     }
+
+    // ========== Address Endpoints ==========
 
     @GetMapping("/addresses")
     @Operation(summary = "Get user addresses")
@@ -243,6 +245,38 @@ public class UserController {
 
         return ResponseEntity.ok(
                 ApiResponseDTO.success("Address geocoded successfully", response)
+        );
+    }
+
+    // ========== Admin Endpoints ==========
+
+    @PutMapping("/{userId}/status")
+    @Operation(summary = "Update user status (admin only)")
+    public ResponseEntity<ApiResponseDTO<UserDTO>> updateUserStatus(
+            @PathVariable String userId,
+            @Valid @RequestBody UserStatusUpdateRequestDTO request) {
+
+        log.info("Update status for user {} to enabled={}", userId, request.getEnabled());
+
+        UserDTO response = userService.updateUserStatus(userId, request);
+
+        return ResponseEntity.ok(
+                ApiResponseDTO.success("User status updated successfully", response)
+        );
+    }
+
+    @PutMapping("/{userId}/role")
+    @Operation(summary = "Update user role (admin only)")
+    public ResponseEntity<ApiResponseDTO<UserDTO>> updateUserRole(
+            @PathVariable String userId,
+            @Valid @RequestBody UserRoleUpdateRequestDTO request) {
+
+        log.info("Update role for user {} to {}", userId, request.getRole());
+
+        UserDTO response = userService.updateUserRole(userId, request);
+
+        return ResponseEntity.ok(
+                ApiResponseDTO.success("User role updated successfully", response)
         );
     }
 }

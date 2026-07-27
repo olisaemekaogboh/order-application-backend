@@ -20,7 +20,7 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
 @Tag(name = "Admin Management", description = "Admin management endpoints")
-public class AuditController {
+public class AdminAuditController {
 
 
     private final AuditService auditService;

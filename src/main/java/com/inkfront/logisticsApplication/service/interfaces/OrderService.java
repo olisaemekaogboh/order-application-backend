@@ -1,9 +1,6 @@
 package com.inkfront.logisticsApplication.service.interfaces;
 
-import com.inkfront.logisticsApplication.dto.request.order.OrderFilterRequestDTO;
-import com.inkfront.logisticsApplication.dto.request.order.OrderRequestDTO;
-import com.inkfront.logisticsApplication.dto.request.order.OrderUpdateRequestDTO;
-import com.inkfront.logisticsApplication.dto.request.order.PriceCalculationRequestDTO;
+import com.inkfront.logisticsApplication.dto.request.order.*;
 import com.inkfront.logisticsApplication.dto.response.common.PaginatedResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.order.OrderResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.order.OrderTrackingDTO;
@@ -13,75 +10,36 @@ import java.util.List;
 
 public interface OrderService {
 
-    PriceCalculationResponseDTO calculatePrice(
-            PriceCalculationRequestDTO request
-    );
+    PriceCalculationResponseDTO calculatePrice(PriceCalculationRequestDTO request);
 
-    OrderResponseDTO createOrder(
-            OrderRequestDTO orderRequest,
-            String userId
-    );
+    OrderResponseDTO createOrder(OrderRequestDTO orderRequest, String userId);
 
-    OrderResponseDTO getOrderById(
-            String userId,
-            String orderId
-    );
+    OrderResponseDTO getOrderById(String userId, String orderId);
 
-    OrderResponseDTO getOrderByNumber(
-            String userId,
-            String orderNumber
-    );
+    OrderResponseDTO getOrderByNumber(String userId, String orderNumber);
 
-    PaginatedResponseDTO<OrderResponseDTO> getUserOrders(
-            String userId,
-            OrderFilterRequestDTO filter
-    );
+    PaginatedResponseDTO<OrderResponseDTO> getUserOrders(String userId, OrderFilterRequestDTO filter);
 
-    PaginatedResponseDTO<OrderResponseDTO> getDriverOrders(
-            String driverId,
-            OrderFilterRequestDTO filter
-    );
+    PaginatedResponseDTO<OrderResponseDTO> getDriverOrders(String driverId, OrderFilterRequestDTO filter);
 
-    PaginatedResponseDTO<OrderResponseDTO> getAllOrders(
-            OrderFilterRequestDTO filter
-    );
+    PaginatedResponseDTO<OrderResponseDTO> getAllOrders(OrderFilterRequestDTO filter);
 
-    OrderResponseDTO updateOrderStatus(
-            String orderId,
-            OrderUpdateRequestDTO updateRequest
-    );
+    // Updated methods: now using DTOs and returning OrderResponseDTO
+    OrderResponseDTO updateOrderStatus(String orderId, OrderStatusUpdateRequestDTO request);
 
-    OrderResponseDTO cancelOrder(
-            String userId,
-            String orderId,
-            String cancellationReason
-    );
+    OrderResponseDTO cancelOrder(String userId, String orderId, String cancellationReason);
 
-    OrderTrackingDTO trackOrder(
-            String userId,
-            String orderId
-    );
+    OrderTrackingDTO trackOrder(String userId, String orderId);
 
-    List<OrderResponseDTO> getRecentOrders(
-            String userId,
-            int limit
-    );
+    List<OrderResponseDTO> getRecentOrders(String userId, int limit);
 
-    long countUserOrders(
-            String userId
-    );
+    long countUserOrders(String userId);
 
-    long countUserActiveOrders(
-            String userId
-    );
+    long countUserActiveOrders(String userId);
 
-    void assignDriver(
-            String orderId,
-            String driverId
-    );
+    OrderResponseDTO assignDriver(String orderId, DriverAssignmentRequestDTO request);
 
-    void updatePaymentStatus(
-            String orderId,
-            String paymentStatus
-    );
+    OrderResponseDTO updatePaymentStatus(String orderId, PaymentStatusUpdateRequestDTO request);
+
+    OrderResponseDTO updateTracking(String orderId, TrackingUpdateRequestDTO request);
 }

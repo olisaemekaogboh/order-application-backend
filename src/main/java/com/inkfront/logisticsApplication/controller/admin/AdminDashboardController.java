@@ -22,7 +22,7 @@ import org.springframework.web.bind.annotation.*;
 @RequestMapping("/api/admin")
 @RequiredArgsConstructor
 @Tag(name = "Admin Management", description = "Admin management endpoints")
-public class DashboardController {
+public class AdminDashboardController {
 
     private final DashboardService dashboardService;
 

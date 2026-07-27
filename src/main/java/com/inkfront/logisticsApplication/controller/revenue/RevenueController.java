@@ -1,6 +1,7 @@
 package com.inkfront.logisticsApplication.controller.revenue;
 
 import com.inkfront.logisticsApplication.dto.request.admin.RevenueReportRequestDTO;
+import com.inkfront.logisticsApplication.dto.request.revenue.*;
 import com.inkfront.logisticsApplication.dto.response.common.ApiResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.revenue.*;
 import com.inkfront.logisticsApplication.service.interfaces.RevenueService;
@@ -25,6 +26,8 @@ import java.util.List;
 public class RevenueController {
 
     private final RevenueService revenueService;
+
+    // ========== EXISTING ENDPOINTS (unchanged) ==========
 
     @PostMapping("/report/generate")
     @Operation(summary = "Generate revenue report")
@@ -191,5 +194,45 @@ public class RevenueController {
         log.info("Get total driver payout request from: {} to: {}", startDate, endDate);
         Double response = revenueService.getTotalDriverPayout(startDate, endDate);
         return ResponseEntity.ok(ApiResponseDTO.success("Total driver payout retrieved", response));
+    }
+
+    // ========== NEW ENDPOINTS USING REQUEST DTOs ==========
+
+    @PostMapping("/driver-earnings")
+    @Operation(summary = "Get driver earnings report")
+    public ResponseEntity<ApiResponseDTO<DriverEarningsReportDTO>> getDriverEarnings(
+            @Valid @RequestBody DriverEarningsReportRequestDTO request) {
+        log.info("Driver earnings report requested for driver: {} from {} to {}",
+                request.getDriverId(), request.getStartDate(), request.getEndDate());
+        DriverEarningsReportDTO response = revenueService.getDriverEarnings(request);
+        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, response));
+    }
+
+    @PostMapping("/payment-report")
+    @Operation(summary = "Get payment report")
+    public ResponseEntity<ApiResponseDTO<PaymentReportDTO>> getPaymentReport(
+            @Valid @RequestBody PaymentReportRequestDTO request) {
+        log.info("Payment report requested from {} to {} with status {} and method {}",
+                request.getStartDate(), request.getEndDate(), request.getPaymentStatus(), request.getPaymentMethod());
+        PaymentReportDTO response = revenueService.getPaymentReport(request);
+        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, response));
+    }
+
+    @PostMapping("/commission-report")
+    @Operation(summary = "Get commission report")
+    public ResponseEntity<ApiResponseDTO<CommissionReportDTO>> getCommissionReport(
+            @Valid @RequestBody CommissionReportRequestDTO request) {
+        log.info("Commission report requested from {} to {}", request.getStartDate(), request.getEndDate());
+        CommissionReportDTO response = revenueService.getCommissionReport(request);
+        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, response));
+    }
+
+    @PostMapping("/driver-payout")
+    @Operation(summary = "Process driver payout")
+    public ResponseEntity<ApiResponseDTO<DriverPayoutDTO>> processDriverPayout(
+            @Valid @RequestBody DriverPayoutRequestDTO request) {
+        log.info("Driver payout requested for driver {} with amount {}", request.getDriverId(), request.getAmount());
+        DriverPayoutDTO response = revenueService.processDriverPayout(request);
+        return ResponseEntity.ok(ApiResponseDTO.success("Payout processed successfully", response));
     }
 }

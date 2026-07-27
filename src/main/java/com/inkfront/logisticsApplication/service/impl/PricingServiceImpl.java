@@ -1,10 +1,11 @@
-// service/impl/PricingServiceImpl.java
 package com.inkfront.logisticsApplication.service.impl;
 
 import com.inkfront.logisticsApplication.domain.entity.PricingConfig;
 import com.inkfront.logisticsApplication.domain.enums.VehicleType;
 import com.inkfront.logisticsApplication.dto.request.admin.PricingConfigRequestDTO;
+import com.inkfront.logisticsApplication.dto.request.pricing.PriceCalculationRequestDTO;
 import com.inkfront.logisticsApplication.dto.response.admin.PricingConfigDTO;
+import com.inkfront.logisticsApplication.dto.response.pricing.PriceCalculationResponseDTO;
 import com.inkfront.logisticsApplication.exception.BadRequestException;
 import com.inkfront.logisticsApplication.exception.ResourceNotFoundException;
 import com.inkfront.logisticsApplication.mapper.PricingConfigMapper;
@@ -32,7 +33,6 @@ public class PricingServiceImpl implements PricingService {
     public PricingConfigDTO createPricingConfig(PricingConfigRequestDTO request) {
         log.info("Creating pricing config for vehicle type: {}", request.getVehicleType());
 
-        // Check if active config already exists for this vehicle type
         if (pricingConfigRepository.existsByVehicleTypeAndActiveTrue(request.getVehicleType())) {
             throw new BadRequestException("Active pricing config already exists for vehicle type: " + request.getVehicleType());
         }
@@ -79,7 +79,6 @@ public class PricingServiceImpl implements PricingService {
 
     @Override
     public List<PricingConfigDTO> getActivePricingConfigs() {
-        // Use the correct method that returns List<PricingConfig>
         return pricingConfigRepository.findAllActive().stream()
                 .map(pricingConfigMapper::toDTO)
                 .collect(Collectors.toList());
@@ -103,8 +102,6 @@ public class PricingServiceImpl implements PricingService {
         PricingConfig config = pricingConfigRepository.findById(configId)
                 .orElseThrow(() -> new ResourceNotFoundException("Pricing config not found with id: " + configId));
 
-        // Deactivate all other configs for this vehicle type
-        // Use the correct method that returns List<PricingConfig>
         List<PricingConfig> activeConfigs = pricingConfigRepository.findByVehicleType(config.getVehicleType());
         activeConfigs.forEach(c -> {
             if (!c.getId().equals(configId)) {
@@ -131,21 +128,37 @@ public class PricingServiceImpl implements PricingService {
     }
 
     @Override
-    public double calculatePrice(VehicleType vehicleType, double distanceKm, double weight, double volume,
-                                 boolean express, boolean night) {
-        PricingConfig config = getActivePricingConfigEntity(vehicleType);
+    public PriceCalculationResponseDTO calculatePrice(PriceCalculationRequestDTO request) {
+        double basePrice = calculateBasePrice(request.getVehicleType(), request.getDistanceKm());
+        double weight = calculateWeightSurcharge(request.getVehicleType(), request.getWeight());
+        double volume = calculateVolumeSurcharge(request.getVehicleType(), request.getVolume());
+        double express = request.isExpress() ? calculateExpressSurcharge(request.getVehicleType()) : 0;
+        double night = request.isNight() ? calculateNightSurcharge(request.getVehicleType()) : 0;
 
-        double basePrice = calculateBasePrice(vehicleType, distanceKm);
-        double weightSurcharge = calculateWeightSurcharge(vehicleType, weight);
-        double volumeSurcharge = calculateVolumeSurcharge(vehicleType, volume);
-        double expressSurcharge = calculateExpressSurcharge(vehicleType);
-        double nightSurcharge = calculateNightSurcharge(vehicleType);
+        double total = basePrice + weight + volume + express + night;
 
-        double total = basePrice + weightSurcharge + volumeSurcharge +
-                (express ? expressSurcharge : 0) +
-                (night ? nightSurcharge : 0);
+        return PriceCalculationResponseDTO.builder()
+                .basePrice(basePrice)
+                .weightSurcharge(weight)
+                .volumeSurcharge(volume)
+                .expressSurcharge(express)
+                .nightSurcharge(night)
+                .totalPrice(total)
+                .build();
+    }
 
-        return Math.max(total, config.getMinimumCharge());
+    @Override
+    public double calculatePrice(VehicleType vehicleType, double distanceKm, double weight,
+                                 double volume, boolean express, boolean night) {
+        PriceCalculationRequestDTO request = PriceCalculationRequestDTO.builder()
+                .vehicleType(vehicleType)
+                .distanceKm(distanceKm)
+                .weight(weight)
+                .volume(volume)
+                .express(express)
+                .night(night)
+                .build();
+        return calculatePrice(request).getTotalPrice();
     }
 
     @Override

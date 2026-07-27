@@ -3,6 +3,8 @@ package com.inkfront.logisticsApplication.service.impl;
 import com.inkfront.logisticsApplication.domain.entity.Driver;
 import com.inkfront.logisticsApplication.domain.entity.DriverEarning;
 import com.inkfront.logisticsApplication.domain.enums.VehicleType;
+import com.inkfront.logisticsApplication.dto.request.driver.DriverAvailabilityRequestDTO;
+import com.inkfront.logisticsApplication.dto.request.driver.DriverLocationRequestDTO;
 import com.inkfront.logisticsApplication.dto.request.driver.DriverRegistrationRequestDTO;
 import com.inkfront.logisticsApplication.dto.request.driver.DriverUpdateRequestDTO;
 import com.inkfront.logisticsApplication.dto.response.common.PaginatedResponseDTO;
@@ -104,12 +106,14 @@ public class DriverServiceImpl implements DriverService {
 
         return driverMapper.toDTO(driver);
     }
+
     @Override
     public DriverDTO getDriverById(String driverId) {
         Driver driver = driverRepository.findById(driverId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.DRIVER_NOT_FOUND));
         return driverMapper.toDTO(driver);
     }
+
     @Override
     public DriverDTO getMyProfile(String driverId) {
 
@@ -120,6 +124,7 @@ public class DriverServiceImpl implements DriverService {
 
         return driverMapper.toDTO(driver);
     }
+
     @Override
     public DriverDTO getDriverByEmail(String email) {
         Driver driver = driverRepository.findByEmail(email)
@@ -199,10 +204,11 @@ public class DriverServiceImpl implements DriverService {
 
         driverRepository.delete(driver);
     }
+
     @Override
-    public void updateAvailability(
+    public DriverDTO updateAvailability(
             String driverId,
-            boolean available) {
+            DriverAvailabilityRequestDTO request) {
 
         log.info("Updating availability for driver: {}", driverId);
 
@@ -216,17 +222,18 @@ public class DriverServiceImpl implements DriverService {
                     "Driver must be verified before changing availability.");
         }
 
-        driver.setAvailable(available);
+        driver.setAvailable(request.getAvailable());
         driver.setLastActive(LocalDateTime.now());
 
         driverRepository.save(driver);
+
+        return driverMapper.toDTO(driver);
     }
+
     @Override
-    public void updateLocation(
+    public DriverDTO updateLocation(
             String driverId,
-            Double latitude,
-            Double longitude,
-            String location) {
+            DriverLocationRequestDTO request) {
 
         log.info("Updating location for driver: {}", driverId);
 
@@ -235,18 +242,21 @@ public class DriverServiceImpl implements DriverService {
                         new ResourceNotFoundException(
                                 ErrorMessages.DRIVER_NOT_FOUND));
 
-        if (latitude == null || longitude == null) {
+        if (request.getLatitude() == null || request.getLongitude() == null) {
             throw new BadRequestException(
                     "Latitude and longitude are required.");
         }
 
-        driver.setCurrentLatitude(latitude);
-        driver.setCurrentLongitude(longitude);
-        driver.setCurrentLocation(location);
+        driver.setCurrentLatitude(request.getLatitude());
+        driver.setCurrentLongitude(request.getLongitude());
+        driver.setCurrentLocation(request.getLocation());
         driver.setLastActive(LocalDateTime.now());
 
         driverRepository.save(driver);
+
+        return driverMapper.toDTO(driver);
     }
+
     @Override
     @Transactional(readOnly = true)
     public List<DriverEarningDTO> getDriverEarnings(String driverId) {
@@ -261,6 +271,7 @@ public class DriverServiceImpl implements DriverService {
                 .map(driverEarningMapper::toDTO)
                 .collect(Collectors.toList());
     }
+
     @Override
     @Transactional(readOnly = true)
     public PaginatedResponseDTO<DriverEarningDTO> getDriverEarningsPaginated(
@@ -391,6 +402,7 @@ public class DriverServiceImpl implements DriverService {
 
         driverRepository.save(driver);
     }
+
     @Override
     public long countTotalDrivers() {
         return driverRepository.count();

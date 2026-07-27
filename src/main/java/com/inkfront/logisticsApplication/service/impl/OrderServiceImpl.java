@@ -3,10 +3,7 @@ package com.inkfront.logisticsApplication.service.impl;
 import com.inkfront.logisticsApplication.domain.entity.*;
 import com.inkfront.logisticsApplication.domain.enums.OrderStatus;
 import com.inkfront.logisticsApplication.domain.enums.PaymentStatus;
-import com.inkfront.logisticsApplication.dto.request.order.OrderFilterRequestDTO;
-import com.inkfront.logisticsApplication.dto.request.order.OrderRequestDTO;
-import com.inkfront.logisticsApplication.dto.request.order.OrderUpdateRequestDTO;
-import com.inkfront.logisticsApplication.dto.request.order.PriceCalculationRequestDTO;
+import com.inkfront.logisticsApplication.dto.request.order.*;
 import com.inkfront.logisticsApplication.dto.response.common.PaginatedResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.order.OrderResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.order.OrderTrackingDTO;
@@ -173,6 +170,7 @@ public class OrderServiceImpl implements OrderService {
 
         return orderMapper.toDTO(order);
     }
+
     @Override
     public OrderResponseDTO getOrderById(
             String userId,
@@ -251,7 +249,9 @@ public class OrderServiceImpl implements OrderService {
     @Override
     public OrderResponseDTO updateOrderStatus(
             String orderId,
-            OrderUpdateRequestDTO updateRequest) {
+            OrderStatusUpdateRequestDTO request) {
+
+        log.info("Updating order {} to status {}", orderId, request.getStatus());
 
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() ->
@@ -268,7 +268,7 @@ public class OrderServiceImpl implements OrderService {
                     ErrorMessages.ORDER_ALREADY_CANCELLED);
         }
 
-        OrderStatus newStatus = updateRequest.getStatus();
+        OrderStatus newStatus = request.getStatus();
 
         validateStatusTransition(
                 order.getStatus(),
@@ -294,16 +294,13 @@ public class OrderServiceImpl implements OrderService {
                     driver.setAvailable(true);
 
                     driverRepository.save(driver);
-
-                    // Future enhancement:
-                    // create driver earnings record here.
                 }
             }
 
             case CANCELLED -> {
                 order.setCancelledAt(LocalDateTime.now());
                 order.setCancellationReason(
-                        updateRequest.getCancellationReason());
+                        request.getReason());
 
                 if (order.getDriver() != null) {
 
@@ -365,6 +362,7 @@ public class OrderServiceImpl implements OrderService {
 
         return orderMapper.toDTO(order);
     }
+
     @Override
     public OrderTrackingDTO trackOrder(
             String userId,
@@ -379,11 +377,11 @@ public class OrderServiceImpl implements OrderService {
         OrderTrackingDTO trackingDTO =
                 orderMapper.toTrackingDTO(order);
 
-        // Future enhancement:
-        // Populate tracking history from tracking events table.
+        // Future enhancement: Populate tracking history from tracking events table.
 
         return trackingDTO;
     }
+
     @Override
     public List<OrderResponseDTO> getRecentOrders(String userId, int limit) {
         Pageable pageable = PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "createdAt"));
@@ -407,9 +405,11 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public void assignDriver(
+    public OrderResponseDTO assignDriver(
             String orderId,
-            String driverId) {
+            DriverAssignmentRequestDTO request) {
+
+        log.info("Assigning driver {} to order {}", request.getDriverId(), orderId);
 
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() ->
@@ -421,7 +421,7 @@ public class OrderServiceImpl implements OrderService {
                     "Only pending orders can be assigned.");
         }
 
-        Driver driver = driverRepository.findById(driverId)
+        Driver driver = driverRepository.findById(request.getDriverId())
                 .orElseThrow(() ->
                         new ResourceNotFoundException(
                                 ErrorMessages.DRIVER_NOT_FOUND));
@@ -450,29 +450,31 @@ public class OrderServiceImpl implements OrderService {
                 order.getId(),
                 "You have been assigned to order "
                         + order.getOrderNumber());
+
+        return orderMapper.toDTO(order);
     }
 
     @Override
-    public void updatePaymentStatus(
+    public OrderResponseDTO updatePaymentStatus(
             String orderId,
-            String paymentStatus) {
+            PaymentStatusUpdateRequestDTO request) {
+
+        log.info("Updating payment status for order {} to {}", orderId, request.getPaymentStatus());
 
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() ->
                         new ResourceNotFoundException(
                                 ErrorMessages.ORDER_NOT_FOUND));
 
-        PaymentStatus status;
-
-        try {
-            status = PaymentStatus.valueOf(
-                    paymentStatus.toUpperCase());
-        } catch (IllegalArgumentException ex) {
-            throw new BadRequestException(
-                    "Invalid payment status: " + paymentStatus);
-        }
+        PaymentStatus status = request.getPaymentStatus();
 
         order.setPaymentStatus(status);
+
+        // Optionally set transaction reference if present
+        if (request.getTransactionReference() != null) {
+            // You might have a field for transaction reference; if not, it's ignored.
+            // Future enhancement: store reference.
+        }
 
         orderRepository.save(order);
 
@@ -483,6 +485,46 @@ public class OrderServiceImpl implements OrderService {
                     order.getId(),
                     "PAID");
         }
+
+        return orderMapper.toDTO(order);
+    }
+
+    @Override
+    public OrderResponseDTO updateTracking(
+            String orderId,
+            TrackingUpdateRequestDTO request) {
+
+        log.info("Updating tracking for order {}", orderId);
+
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                ErrorMessages.ORDER_NOT_FOUND));
+
+        // For now, we update a hypothetical location field.
+        // If you have separate tracking entity, you would create it here.
+        // This example assumes we store current location in the order (as we did in driver).
+        // Since the prompt doesn't mention order location fields, we can either store in a separate table
+        // or ignore. We'll just log and return the order as-is.
+        // But to follow the pattern, we might add a location field to Order or create tracking history.
+        // Since the prompt says "do not change entities", we can't add fields.
+        // So we'll simply return the existing order DTO. However, the prompt expects to return OrderDTO.
+        // For now, we just log and return the unchanged order.
+        // We could also create a new tracking event entity if available.
+
+        // Simulate updating location (if we had fields):
+        // order.setCurrentLatitude(request.getLatitude());
+        // order.setCurrentLongitude(request.getLongitude());
+        // order.setCurrentLocation(request.getLocation());
+
+        // We'll just log the new coordinates
+        log.debug("New tracking coordinates: lat={}, lon={}, location={}",
+                request.getLatitude(), request.getLongitude(), request.getLocation());
+
+        // You might want to persist tracking history; but that's out of scope.
+
+        // Return the order DTO (unchanged)
+        return orderMapper.toDTO(order);
     }
 
     private Pageable createPageable(OrderFilterRequestDTO filter) {

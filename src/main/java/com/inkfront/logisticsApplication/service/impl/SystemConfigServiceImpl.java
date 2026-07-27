@@ -2,6 +2,8 @@
 package com.inkfront.logisticsApplication.service.impl;
 
 import com.inkfront.logisticsApplication.domain.entity.SystemConfig;
+import com.inkfront.logisticsApplication.dto.request.admin.SystemConfigRequestDTO;
+import com.inkfront.logisticsApplication.dto.request.admin.SystemConfigUpdateRequestDTO;
 import com.inkfront.logisticsApplication.dto.response.admin.SystemConfigDTO;
 import com.inkfront.logisticsApplication.exception.ResourceNotFoundException;
 import com.inkfront.logisticsApplication.mapper.SystemConfigMapper;
@@ -57,25 +59,25 @@ public class SystemConfigServiceImpl implements SystemConfigService {
     }
 
     @Override
-    public SystemConfigDTO createConfig(SystemConfigDTO configDTO) {
-        SystemConfig config = systemConfigMapper.toEntity(configDTO);
+    public SystemConfigDTO createConfig(SystemConfigRequestDTO request) {
+        SystemConfig config = systemConfigMapper.toEntity(request);
         config = systemConfigRepository.save(config);
         return systemConfigMapper.toDTO(config);
     }
 
     @Override
     @CacheEvict(value = "systemConfigs", key = "#key")
-    public SystemConfigDTO updateConfig(String key, String value) {
-        return updateConfig(key, value, SecurityUtils.getCurrentUsername());
+    public SystemConfigDTO updateConfig(String key,    SystemConfigUpdateRequestDTO request) {
+        return updateConfig(key, request, SecurityUtils.getCurrentUsername());
     }
 
     @Override
     @CacheEvict(value = "systemConfigs", key = "#key")
-    public SystemConfigDTO updateConfig(String key, String value, String updatedBy) {
+    public SystemConfigDTO updateConfig(String key,SystemConfigUpdateRequestDTO request , String updatedBy) {
         SystemConfig config = systemConfigRepository.findByConfigKey(key)
                 .orElseThrow(() -> new ResourceNotFoundException("Config not found with key: " + key));
 
-        config.setConfigValue(value);
+        config.setConfigValue(request.getConfigValue());
         config.setUpdatedBy(updatedBy);
         config = systemConfigRepository.save(config);
 

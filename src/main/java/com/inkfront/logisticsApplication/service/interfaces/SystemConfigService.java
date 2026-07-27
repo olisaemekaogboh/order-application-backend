@@ -1,6 +1,7 @@
-// service/interfaces/SystemConfigService.java
 package com.inkfront.logisticsApplication.service.interfaces;
 
+import com.inkfront.logisticsApplication.dto.request.admin.SystemConfigRequestDTO;
+import com.inkfront.logisticsApplication.dto.request.admin.SystemConfigUpdateRequestDTO;
 import com.inkfront.logisticsApplication.dto.response.admin.SystemConfigDTO;
 
 import java.util.List;
@@ -15,11 +16,18 @@ public interface SystemConfigService {
 
     List<SystemConfigDTO> getConfigsByCategory(String category);
 
-    SystemConfigDTO createConfig(SystemConfigDTO configDTO);
+    SystemConfigDTO createConfig(SystemConfigRequestDTO request);
 
-    SystemConfigDTO updateConfig(String key, String value);
+    SystemConfigDTO updateConfig(
+            String key,
+            SystemConfigUpdateRequestDTO request
+    );
 
-    SystemConfigDTO updateConfig(String key, String value, String updatedBy);
+    SystemConfigDTO updateConfig(
+            String key,
+            SystemConfigUpdateRequestDTO request,
+            String updatedBy
+    );
 
     void deleteConfig(String configId);
 

@@ -3,7 +3,9 @@ package com.inkfront.logisticsApplication.service.interfaces;
 
 import com.inkfront.logisticsApplication.domain.enums.VehicleType;
 import com.inkfront.logisticsApplication.dto.request.admin.PricingConfigRequestDTO;
+import com.inkfront.logisticsApplication.dto.request.pricing.PriceCalculationRequestDTO;
 import com.inkfront.logisticsApplication.dto.response.admin.PricingConfigDTO;
+import com.inkfront.logisticsApplication.dto.response.pricing.PriceCalculationResponseDTO;
 
 import java.util.List;
 
@@ -12,7 +14,9 @@ public interface PricingService {
     PricingConfigDTO createPricingConfig(PricingConfigRequestDTO request);
 
     PricingConfigDTO updatePricingConfig(String configId, PricingConfigRequestDTO request);
-
+    PriceCalculationResponseDTO calculatePrice(
+            PriceCalculationRequestDTO request
+    );
     PricingConfigDTO getPricingConfigById(String configId);
 
     PricingConfigDTO getActivePricingConfig(VehicleType vehicleType);
