@@ -12,6 +12,7 @@ import org.springframework.stereotype.Repository;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 @Repository
 public interface NotificationRepository extends JpaRepository<Notification, String> {
@@ -19,7 +20,9 @@ public interface NotificationRepository extends JpaRepository<Notification, Stri
     Page<Notification> findByUserId(String userId, Pageable pageable);
 
     Page<Notification> findByUserIdAndReadFalse(String userId, Pageable pageable);
+    Optional<Notification> findByIdAndUserId(String notificationId, String userId);
 
+    void deleteByIdAndUserId(String notificationId, String userId);
     List<Notification> findByUserIdAndReadFalse(String userId);
 
     Page<Notification> findByUserIdAndType(String userId, NotificationType type, Pageable pageable);

@@ -43,6 +43,7 @@ public class UserServiceImpl implements UserService {
         return userMapper.toDTO(user);
     }
 
+
     @Override
     public UserDTO getUserByEmail(String email) {
         User user = userRepository.findByEmail(email)

@@ -71,25 +71,55 @@ public class DriverServiceImpl implements DriverService {
     }
 
     @Override
-    public DriverDTO updateDriver(String driverId, DriverUpdateRequestDTO updateRequest) {
+    public DriverDTO updateDriver(
+            String driverId,
+            DriverUpdateRequestDTO updateRequest) {
+
         log.info("Updating driver: {}", driverId);
 
         Driver driver = driverRepository.findById(driverId)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.DRIVER_NOT_FOUND));
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                ErrorMessages.DRIVER_NOT_FOUND));
+
+        if (updateRequest.getPhoneNumber() != null
+                && !updateRequest.getPhoneNumber().equals(driver.getPhoneNumber())
+                && driverRepository.existsByPhoneNumber(updateRequest.getPhoneNumber())) {
+
+            throw new DuplicateResourceException(
+                    "Phone number already exists");
+        }
+
+        if (updateRequest.getVehiclePlateNumber() != null
+                && !updateRequest.getVehiclePlateNumber().equals(driver.getVehiclePlateNumber())
+                && driverRepository.existsByVehiclePlateNumber(updateRequest.getVehiclePlateNumber())) {
+
+            throw new DuplicateResourceException(
+                    "Vehicle plate number already exists");
+        }
 
         driverMapper.updateDriverFromDTO(updateRequest, driver);
+
         driver = driverRepository.save(driver);
 
         return driverMapper.toDTO(driver);
     }
-
     @Override
     public DriverDTO getDriverById(String driverId) {
         Driver driver = driverRepository.findById(driverId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.DRIVER_NOT_FOUND));
         return driverMapper.toDTO(driver);
     }
+    @Override
+    public DriverDTO getMyProfile(String driverId) {
 
+        Driver driver = driverRepository.findById(driverId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                ErrorMessages.DRIVER_NOT_FOUND));
+
+        return driverMapper.toDTO(driver);
+    }
     @Override
     public DriverDTO getDriverByEmail(String email) {
         Driver driver = driverRepository.findByEmail(email)
@@ -123,9 +153,30 @@ public class DriverServiceImpl implements DriverService {
     }
 
     @Override
-    public List<DriverDTO> getAvailableDriversForAssignment(String vehicleType) {
-        VehicleType type = VehicleType.valueOf(vehicleType);
-        List<Driver> drivers = driverRepository.findByAvailableTrueAndVehicleType(type);
+    public List<DriverDTO> getAvailableDriversForAssignment(
+            String vehicleType) {
+
+        List<Driver> drivers;
+
+        if (vehicleType == null || vehicleType.isBlank()) {
+
+            drivers = driverRepository.findByAvailableTrueAndVerifiedTrue();
+
+        } else {
+
+            VehicleType type;
+
+            try {
+                type = VehicleType.valueOf(vehicleType.toUpperCase());
+            } catch (IllegalArgumentException ex) {
+                throw new BadRequestException(
+                        "Invalid vehicle type: " + vehicleType);
+            }
+
+            drivers = driverRepository
+                    .findByAvailableTrueAndVerifiedTrueAndVehicleType(type);
+        }
+
         return drivers.stream()
                 .map(driverMapper::toDTO)
                 .collect(Collectors.toList());
@@ -133,142 +184,213 @@ public class DriverServiceImpl implements DriverService {
 
     @Override
     public void deleteDriver(String driverId) {
+
         log.info("Deleting driver: {}", driverId);
 
-        if (!driverRepository.existsById(driverId)) {
-            throw new ResourceNotFoundException(ErrorMessages.DRIVER_NOT_FOUND);
+        Driver driver = driverRepository.findById(driverId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                ErrorMessages.DRIVER_NOT_FOUND));
+
+        if (!driver.getAvailable()) {
+            throw new BadRequestException(
+                    "Driver cannot be deleted while assigned to active deliveries.");
         }
 
-        driverRepository.deleteById(driverId);
+        driverRepository.delete(driver);
     }
-
     @Override
-    public void updateAvailability(String driverId, boolean available) {
-        log.info("Updating driver availability: {} -> {}", driverId, available);
+    public void updateAvailability(
+            String driverId,
+            boolean available) {
+
+        log.info("Updating availability for driver: {}", driverId);
 
         Driver driver = driverRepository.findById(driverId)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.DRIVER_NOT_FOUND));
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                ErrorMessages.DRIVER_NOT_FOUND));
+
+        if (!driver.getVerified()) {
+            throw new BadRequestException(
+                    "Driver must be verified before changing availability.");
+        }
 
         driver.setAvailable(available);
         driver.setLastActive(LocalDateTime.now());
+
         driverRepository.save(driver);
     }
-
     @Override
-    public void updateLocation(String driverId, Double latitude, Double longitude, String location) {
-        log.info("Updating driver location: {}", driverId);
+    public void updateLocation(
+            String driverId,
+            Double latitude,
+            Double longitude,
+            String location) {
+
+        log.info("Updating location for driver: {}", driverId);
 
         Driver driver = driverRepository.findById(driverId)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.DRIVER_NOT_FOUND));
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                ErrorMessages.DRIVER_NOT_FOUND));
+
+        if (latitude == null || longitude == null) {
+            throw new BadRequestException(
+                    "Latitude and longitude are required.");
+        }
 
         driver.setCurrentLatitude(latitude);
         driver.setCurrentLongitude(longitude);
         driver.setCurrentLocation(location);
         driver.setLastActive(LocalDateTime.now());
+
         driverRepository.save(driver);
     }
-
     @Override
+    @Transactional(readOnly = true)
     public List<DriverEarningDTO> getDriverEarnings(String driverId) {
-        if (!driverRepository.existsById(driverId)) {
-            throw new ResourceNotFoundException(ErrorMessages.DRIVER_NOT_FOUND);
-        }
-
-        List<DriverEarning> earnings = driverEarningRepository.findByDriverId(driverId);
-        return earnings.stream()
-                .map(driverEarningMapper::toDTO)
-                .collect(Collectors.toList());
-    }
-
-    @Override
-    public PaginatedResponseDTO<DriverEarningDTO> getDriverEarningsPaginated(String driverId, int page, int size) {
-        if (!driverRepository.existsById(driverId)) {
-            throw new ResourceNotFoundException(ErrorMessages.DRIVER_NOT_FOUND);
-        }
-
-        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "earningDate"));
-        Page<DriverEarning> earnings = driverEarningRepository.findByDriverId(driverId, pageable);
-
-        List<DriverEarningDTO> content = earnings.getContent().stream()
-                .map(driverEarningMapper::toDTO)
-                .collect(Collectors.toList());
-
-        return new PaginatedResponseDTO<>(content, earnings.getNumber(), earnings.getSize(), earnings.getTotalElements());
-    }
-
-    @Override
-    public Double getDriverTotalEarnings(String driverId) {
-        if (!driverRepository.existsById(driverId)) {
-            throw new ResourceNotFoundException(ErrorMessages.DRIVER_NOT_FOUND);
-        }
-
-        Double total = driverEarningRepository.sumTotalEarnings(driverId);
-        return total != null ? total : 0.0;
-    }
-
-    @Override
-    public Double getDriverUnpaidEarnings(String driverId) {
-        if (!driverRepository.existsById(driverId)) {
-            throw new ResourceNotFoundException(ErrorMessages.DRIVER_NOT_FOUND);
-        }
-
-        Double unpaid = driverEarningRepository.sumUnpaidEarnings(driverId);
-        return unpaid != null ? unpaid : 0.0;
-    }
-
-    @Override
-    public void processDriverPayment(String driverId, Double amount) {
-        log.info("Processing payment for driver: {}, amount: {}", driverId, amount);
 
         Driver driver = driverRepository.findById(driverId)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.DRIVER_NOT_FOUND));
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                ErrorMessages.DRIVER_NOT_FOUND));
 
-        if (amount <= 0) {
-            throw new BadRequestException("Amount must be greater than 0");
-        }
+        return driverEarningRepository.findByDriverId(driver.getId())
+                .stream()
+                .map(driverEarningMapper::toDTO)
+                .collect(Collectors.toList());
+    }
+    @Override
+    @Transactional(readOnly = true)
+    public PaginatedResponseDTO<DriverEarningDTO> getDriverEarningsPaginated(
+            String driverId,
+            int page,
+            int size) {
 
-        Double unpaidEarnings = getDriverUnpaidEarnings(driverId);
-        if (unpaidEarnings < amount) {
-            throw new BadRequestException("Insufficient unpaid earnings");
-        }
+        Driver driver = driverRepository.findById(driverId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                ErrorMessages.DRIVER_NOT_FOUND));
 
-        // Mark earnings as paid
-        List<DriverEarning> unpaidEarningsList = driverEarningRepository.findByDriverIdAndPaidFalse(driverId);
-        double remaining = amount;
+        Pageable pageable = PageRequest.of(
+                page,
+                size,
+                Sort.by(Sort.Direction.DESC, "earningDate")
+        );
 
-        for (DriverEarning earning : unpaidEarningsList) {
-            if (remaining <= 0) break;
+        Page<DriverEarning> earnings =
+                driverEarningRepository.findByDriverId(
+                        driver.getId(),
+                        pageable);
 
-            if (earning.getNetAmount() <= remaining) {
-                earning.setPaid(true);
-                earning.setPaidDate(LocalDateTime.now());
-                remaining -= earning.getNetAmount();
-            } else {
-                // Partial payment - split the earning
-                DriverEarning partialEarning = new DriverEarning();
-                partialEarning.setDriver(driver);
-                partialEarning.setOrder(earning.getOrder());
-                partialEarning.setAmount(remaining);
-                partialEarning.setCommission(0.0);
-                partialEarning.setNetAmount(remaining);
-                partialEarning.setCurrency(earning.getCurrency());
-                partialEarning.setEarningDate(LocalDateTime.now());
-                partialEarning.setPaid(true);
-                partialEarning.setPaidDate(LocalDateTime.now());
-                driverEarningRepository.save(partialEarning);
+        List<DriverEarningDTO> content =
+                earnings.getContent()
+                        .stream()
+                        .map(driverEarningMapper::toDTO)
+                        .collect(Collectors.toList());
 
-                earning.setAmount(earning.getAmount() - remaining);
-                earning.setNetAmount(earning.getNetAmount() - remaining);
-                remaining = 0.0;
-                driverEarningRepository.save(earning);
-            }
-        }
-
-        // Update driver balance
-        driver.setAvailableBalance(driver.getAvailableBalance() - amount);
-        driverRepository.save(driver);
+        return new PaginatedResponseDTO<>(
+                content,
+                earnings.getNumber(),
+                earnings.getSize(),
+                earnings.getTotalElements());
     }
 
+    @Override
+    @Transactional(readOnly = true)
+    public Double getDriverTotalEarnings(String driverId) {
+
+        driverRepository.findById(driverId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                ErrorMessages.DRIVER_NOT_FOUND));
+
+        return java.util.Optional
+                .ofNullable(driverEarningRepository.sumTotalEarnings(driverId))
+                .orElse(0.0);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public Double getDriverUnpaidEarnings(String driverId) {
+
+        driverRepository.findById(driverId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                ErrorMessages.DRIVER_NOT_FOUND));
+
+        return java.util.Optional
+                .ofNullable(driverEarningRepository.sumUnpaidEarnings(driverId))
+                .orElse(0.0);
+    }
+
+    @Override
+    public void processDriverPayment(
+            String driverId,
+            Double amount) {
+
+        log.info(
+                "Processing payment for driver: {}, amount: {}",
+                driverId,
+                amount);
+
+        if (amount == null || amount <= 0) {
+            throw new BadRequestException(
+                    "Amount must be greater than zero.");
+        }
+
+        Driver driver = driverRepository.findById(driverId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                ErrorMessages.DRIVER_NOT_FOUND));
+
+        Double unpaid =
+                getDriverUnpaidEarnings(driverId);
+
+        if (amount > unpaid) {
+            throw new BadRequestException(
+                    "Payment exceeds unpaid earnings.");
+        }
+
+        List<DriverEarning> earnings =
+                driverEarningRepository
+                        .findByDriverIdAndPaidFalse(driverId);
+
+        double remaining = amount;
+
+        for (DriverEarning earning : earnings) {
+
+            if (remaining <= 0) {
+                break;
+            }
+
+            if (earning.getNetAmount() <= remaining) {
+
+                earning.setPaid(true);
+                earning.setPaidDate(LocalDateTime.now());
+
+                remaining -= earning.getNetAmount();
+
+            } else {
+
+                earning.setNetAmount(
+                        earning.getNetAmount() - remaining);
+
+                earning.setAmount(
+                        earning.getAmount() - remaining);
+
+                remaining = 0;
+            }
+
+            driverEarningRepository.save(earning);
+        }
+
+        driver.setAvailableBalance(
+                driver.getAvailableBalance() - amount);
+
+        driverRepository.save(driver);
+    }
     @Override
     public long countTotalDrivers() {
         return driverRepository.count();

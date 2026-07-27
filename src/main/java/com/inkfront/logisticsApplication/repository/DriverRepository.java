@@ -26,7 +26,22 @@ public interface DriverRepository extends JpaRepository<Driver, String> {
     Optional<Driver> findByVehiclePlateNumber(String vehiclePlateNumber);
 
     boolean existsByEmail(String email);
+    Optional<Driver> findByIdAndEmail(
+            String driverId,
+            String email
+    );
 
+    Optional<Driver> findByIdAndVerifiedTrue(
+            String driverId
+    );
+
+    Page<Driver> findByVerifiedTrue(Pageable pageable);
+
+    List<Driver> findByAvailableTrueAndVerifiedTrueAndVehicleType(
+            VehicleType vehicleType
+    );
+
+    boolean existsByIdAndVerifiedTrue(String driverId);
     boolean existsByPhoneNumber(String phoneNumber);
 
     boolean existsByLicenseNumber(String licenseNumber);

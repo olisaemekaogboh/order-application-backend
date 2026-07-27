@@ -14,11 +14,13 @@ import java.util.Optional;
 public interface DeliveryAddressRepository extends JpaRepository<DeliveryAddress, String> {
 
     List<DeliveryAddress> findByUserId(String userId);
-
+    Optional<DeliveryAddress> findByIdAndUserId(String addressId, String userId);
     List<DeliveryAddress> findByUserIdAndIsDefaultTrue(String userId);
 
     Optional<DeliveryAddress> findByUserIdAndId(String userId, String addressId);
+    boolean existsByIdAndUserId(String addressId, String userId);
 
+    void deleteByIdAndUserId(String addressId, String userId);
     boolean existsByUserIdAndIsDefaultTrue(String userId);
 
     @Query("SELECT a FROM DeliveryAddress a WHERE a.user.id = :userId AND a.isDefault = true")

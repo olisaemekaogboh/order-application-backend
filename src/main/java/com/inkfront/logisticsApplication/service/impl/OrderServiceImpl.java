@@ -107,68 +107,97 @@ public class OrderServiceImpl implements OrderService {
 
     @Override
     public OrderResponseDTO createOrder(OrderRequestDTO orderRequest, String userId) {
+
         log.info("Creating order for user: {}", userId);
 
-        // Validate user
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.USER_NOT_FOUND));
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(ErrorMessages.USER_NOT_FOUND));
 
-        // Validate distance
         if (orderRequest.getDistanceKm() < AppConstants.MINIMUM_DISTANCE_KM) {
-            throw new BadRequestException("Distance must be at least " + AppConstants.MINIMUM_DISTANCE_KM + " km");
+            throw new BadRequestException(
+                    "Distance must be at least "
+                            + AppConstants.MINIMUM_DISTANCE_KM
+                            + " km");
         }
 
-        // Get pricing configuration
         PricingConfig config = pricingConfigRepository
                 .findByVehicleTypeAndActiveTrue(orderRequest.getVehicleType())
-                .orElseThrow(() -> new ResourceNotFoundException("Pricing configuration not found"));
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Pricing configuration not found"));
 
-        // Calculate price
-        PriceCalculationRequestDTO priceRequest = new PriceCalculationRequestDTO();
+        PriceCalculationRequestDTO priceRequest =
+                new PriceCalculationRequestDTO();
+
         priceRequest.setDistanceKm(orderRequest.getDistanceKm());
         priceRequest.setWeight(orderRequest.getWeight());
         priceRequest.setVolume(orderRequest.getVolume());
         priceRequest.setVehicleType(orderRequest.getVehicleType());
         priceRequest.setExpressDelivery(orderRequest.isExpressDelivery());
 
-        PriceCalculationResponseDTO priceResponse = calculatePrice(priceRequest);
+        PriceCalculationResponseDTO priceResponse =
+                calculatePrice(priceRequest);
 
-        // Create order
         Order order = orderMapper.toEntity(orderRequest);
+
         order.setOrderNumber(orderNumberGenerator.generateOrderNumber());
         order.setUser(user);
+
         order.setBasePrice(priceResponse.getBasePrice());
         order.setWeightSurcharge(priceResponse.getWeightSurcharge());
         order.setVolumeSurcharge(priceResponse.getVolumeSurcharge());
         order.setExpressSurcharge(priceResponse.getExpressSurcharge());
         order.setTotalPrice(priceResponse.getTotalPrice());
+
         order.setCurrency(priceResponse.getCurrency());
+
         order.setExpress(orderRequest.isExpressDelivery());
+
         order.setOrderDate(LocalDateTime.now());
 
-        // Calculate estimated delivery time
-        long estimatedHours = distanceService.estimateTravelTime(orderRequest.getDistanceKm(), orderRequest.getVehicleType().name());
-        order.setEstimatedDeliveryDate(orderRequest.getPickupDate().plusHours(estimatedHours));
+        long estimatedHours =
+                distanceService.estimateTravelTime(
+                        orderRequest.getDistanceKm(),
+                        orderRequest.getVehicleType().name());
+
+        order.setEstimatedDeliveryDate(
+                orderRequest.getPickupDate().plusHours(estimatedHours));
 
         order = orderRepository.save(order);
 
-        // Create notification
-        notificationService.sendOrderUpdateNotification(userId, order.getId(), "CREATED");
+        notificationService.sendOrderUpdateNotification(
+                userId,
+                order.getId(),
+                "CREATED");
+
+        return orderMapper.toDTO(order);
+    }
+    @Override
+    public OrderResponseDTO getOrderById(
+            String userId,
+            String orderId) {
+
+        Order order = orderRepository
+                .findByIdAndUserId(orderId, userId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                ErrorMessages.ORDER_NOT_FOUND));
 
         return orderMapper.toDTO(order);
     }
 
     @Override
-    public OrderResponseDTO getOrderById(String orderId) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.ORDER_NOT_FOUND));
-        return orderMapper.toDTO(order);
-    }
+    public OrderResponseDTO getOrderByNumber(
+            String userId,
+            String orderNumber) {
 
-    @Override
-    public OrderResponseDTO getOrderByNumber(String orderNumber) {
-        Order order = orderRepository.findByOrderNumber(orderNumber)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.ORDER_NOT_FOUND));
+        Order order = orderRepository
+                .findByOrderNumberAndUserId(orderNumber, userId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                ErrorMessages.ORDER_NOT_FOUND));
+
         return orderMapper.toDTO(order);
     }
 
@@ -220,58 +249,107 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public OrderResponseDTO updateOrderStatus(String orderId, OrderUpdateRequestDTO updateRequest) {
+    public OrderResponseDTO updateOrderStatus(
+            String orderId,
+            OrderUpdateRequestDTO updateRequest) {
+
         Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.ORDER_NOT_FOUND));
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                ErrorMessages.ORDER_NOT_FOUND));
 
         if (order.isDelivered()) {
-            throw new BadRequestException(ErrorMessages.ORDER_ALREADY_DELIVERED);
+            throw new BadRequestException(
+                    ErrorMessages.ORDER_ALREADY_DELIVERED);
         }
 
         if (order.isCancelled()) {
-            throw new BadRequestException(ErrorMessages.ORDER_ALREADY_CANCELLED);
+            throw new BadRequestException(
+                    ErrorMessages.ORDER_ALREADY_CANCELLED);
         }
 
         OrderStatus newStatus = updateRequest.getStatus();
-        validateStatusTransition(order.getStatus(), newStatus);
+
+        validateStatusTransition(
+                order.getStatus(),
+                newStatus
+        );
 
         order.setStatus(newStatus);
 
-        if (newStatus == OrderStatus.PICKED_UP) {
-            order.setPickupDate(LocalDateTime.now());
-        } else if (newStatus == OrderStatus.DELIVERED) {
-            order.setDeliveryDate(LocalDateTime.now());
-            // Create driver earning
-            if (order.getDriver() != null) {
-                // Calculate driver earning (80% of total)
-                double driverEarning = order.getTotalPrice() * 0.8;
-                // Create earning record
-                // This would be handled by a separate service
+        switch (newStatus) {
+
+            case PICKED_UP -> {
+                order.setPickupDate(LocalDateTime.now());
             }
-        } else if (newStatus == OrderStatus.CANCELLED) {
-            order.setCancelledAt(LocalDateTime.now());
-            order.setCancellationReason(updateRequest.getCancellationReason());
+
+            case DELIVERED -> {
+
+                order.setDeliveryDate(LocalDateTime.now());
+
+                if (order.getDriver() != null) {
+
+                    Driver driver = order.getDriver();
+
+                    driver.setAvailable(true);
+
+                    driverRepository.save(driver);
+
+                    // Future enhancement:
+                    // create driver earnings record here.
+                }
+            }
+
+            case CANCELLED -> {
+                order.setCancelledAt(LocalDateTime.now());
+                order.setCancellationReason(
+                        updateRequest.getCancellationReason());
+
+                if (order.getDriver() != null) {
+
+                    Driver driver = order.getDriver();
+
+                    driver.setAvailable(true);
+
+                    driverRepository.save(driver);
+                }
+            }
+
+            default -> {
+                // no additional action
+            }
         }
 
         order = orderRepository.save(order);
 
-        // Send notification
-        notificationService.sendOrderUpdateNotification(order.getUser().getId(), orderId, newStatus.name());
+        notificationService.sendOrderUpdateNotification(
+                order.getUser().getId(),
+                order.getId(),
+                newStatus.name());
 
         return orderMapper.toDTO(order);
     }
 
     @Override
-    public OrderResponseDTO cancelOrder(String orderId, String cancellationReason) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.ORDER_NOT_FOUND));
+    public OrderResponseDTO cancelOrder(
+            String userId,
+            String orderId,
+            String cancellationReason) {
+
+        Order order = orderRepository
+                .findByIdAndUserId(orderId, userId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                ErrorMessages.ORDER_NOT_FOUND));
 
         if (order.isDelivered()) {
-            throw new BadRequestException(ErrorMessages.ORDER_ALREADY_DELIVERED);
+            throw new BadRequestException(
+                    ErrorMessages.ORDER_ALREADY_DELIVERED);
         }
 
         if (order.isCancelled()) {
-            throw new BadRequestException(ErrorMessages.ORDER_ALREADY_CANCELLED);
+            throw new BadRequestException(
+                    ErrorMessages.ORDER_ALREADY_CANCELLED);
         }
 
         order.setStatus(OrderStatus.CANCELLED);
@@ -280,25 +358,32 @@ public class OrderServiceImpl implements OrderService {
 
         order = orderRepository.save(order);
 
-        // Send notification
-        notificationService.sendOrderUpdateNotification(order.getUser().getId(), orderId, "CANCELLED");
+        notificationService.sendOrderUpdateNotification(
+                userId,
+                orderId,
+                "CANCELLED");
 
         return orderMapper.toDTO(order);
     }
-
     @Override
-    public OrderTrackingDTO trackOrder(String orderId) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.ORDER_NOT_FOUND));
+    public OrderTrackingDTO trackOrder(
+            String userId,
+            String orderId) {
 
-        OrderTrackingDTO trackingDTO = orderMapper.toTrackingDTO(order);
+        Order order = orderRepository
+                .findByIdAndUserId(orderId, userId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                ErrorMessages.ORDER_NOT_FOUND));
 
-        // Add tracking history
-        // This would be implemented with a tracking history entity
+        OrderTrackingDTO trackingDTO =
+                orderMapper.toTrackingDTO(order);
+
+        // Future enhancement:
+        // Populate tracking history from tracking events table.
 
         return trackingDTO;
     }
-
     @Override
     public List<OrderResponseDTO> getRecentOrders(String userId, int limit) {
         Pageable pageable = PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "createdAt"));
@@ -322,45 +407,81 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public void assignDriver(String orderId, String driverId) {
+    public void assignDriver(
+            String orderId,
+            String driverId) {
+
         Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.ORDER_NOT_FOUND));
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                ErrorMessages.ORDER_NOT_FOUND));
 
         if (order.getStatus() != OrderStatus.PENDING) {
-            throw new BadRequestException("Order is not pending");
+            throw new BadRequestException(
+                    "Only pending orders can be assigned.");
         }
 
         Driver driver = driverRepository.findById(driverId)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.DRIVER_NOT_FOUND));
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                ErrorMessages.DRIVER_NOT_FOUND));
 
         if (!Boolean.TRUE.equals(driver.getAvailable())) {
-            throw new BadRequestException(ErrorMessages.DRIVER_NOT_AVAILABLE);
+            throw new BadRequestException(
+                    ErrorMessages.DRIVER_NOT_AVAILABLE);
         }
 
         order.setDriver(driver);
         order.setStatus(OrderStatus.ASSIGNED);
+
         orderRepository.save(order);
 
-        // Update driver availability
         driver.setAvailable(false);
+
         driverRepository.save(driver);
 
-        // Send notification to user and driver
-        notificationService.sendDriverAssignmentNotification(order.getUser().getId(), orderId, driver.getName());
-        notificationService.sendDriverAssignmentNotification(driverId, orderId, "You have been assigned to order " + order.getOrderNumber());
+        notificationService.sendDriverAssignmentNotification(
+                order.getUser().getId(),
+                order.getId(),
+                driver.getName());
+
+        notificationService.sendDriverAssignmentNotification(
+                driver.getId(),
+                order.getId(),
+                "You have been assigned to order "
+                        + order.getOrderNumber());
     }
 
     @Override
-    public void updatePaymentStatus(String orderId, String paymentStatus) {
-        Order order = orderRepository.findById(orderId)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.ORDER_NOT_FOUND));
+    public void updatePaymentStatus(
+            String orderId,
+            String paymentStatus) {
 
-        PaymentStatus status = PaymentStatus.valueOf(paymentStatus);
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                ErrorMessages.ORDER_NOT_FOUND));
+
+        PaymentStatus status;
+
+        try {
+            status = PaymentStatus.valueOf(
+                    paymentStatus.toUpperCase());
+        } catch (IllegalArgumentException ex) {
+            throw new BadRequestException(
+                    "Invalid payment status: " + paymentStatus);
+        }
+
         order.setPaymentStatus(status);
+
         orderRepository.save(order);
 
         if (status == PaymentStatus.PAID) {
-            notificationService.sendPaymentNotification(order.getUser().getId(), orderId, "PAID");
+
+            notificationService.sendPaymentNotification(
+                    order.getUser().getId(),
+                    order.getId(),
+                    "PAID");
         }
     }
 

@@ -12,17 +12,30 @@ public interface NotificationService {
 
     NotificationDTO createNotificationWithEntity(String userId, String title, String message, NotificationType type, String entityId, String entityType);
 
-    NotificationDTO getNotificationById(String notificationId);
+
 
     PaginatedResponseDTO<NotificationDTO> getUserNotifications(String userId, int page, int size);
 
     List<NotificationDTO> getUserUnreadNotifications(String userId);
 
-    void markAsRead(String notificationId);
+    NotificationDTO getNotificationById(
+            String userId,
+            String notificationId
+    );
+
+    void markAsRead(
+            String userId,
+            String notificationId
+    );
+
+    void deleteNotification(
+            String userId,
+            String notificationId
+    );
 
     void markAllAsRead(String userId);
 
-    void deleteNotification(String notificationId);
+
 
     void deleteAllUserNotifications(String userId);
 

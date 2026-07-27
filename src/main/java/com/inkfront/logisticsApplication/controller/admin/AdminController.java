@@ -183,4 +183,20 @@ public class AdminController {
         SystemConfigDTO response = systemConfigService.updateConfig(key, value);
         return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.CONFIG_UPDATED, response));
     }
+    @PostMapping("/drivers/{driverId}/payments")
+    public ResponseEntity<ApiResponseDTO<Void>> processDriverPayment(
+            @PathVariable String driverId,
+            @RequestParam Double amount) {
+
+        log.info("Processing payment for driver {}", driverId);
+
+        driverService.processDriverPayment(driverId, amount);
+
+        return ResponseEntity.ok(
+                ApiResponseDTO.success(
+                        "Driver payment processed successfully",
+                        null
+                )
+        );
+    }
 }

@@ -137,5 +137,9 @@ public interface OrderRepository extends JpaRepository<Order, String> {
     @Query("SELECT COUNT(o) FROM Order o WHERE o.deliveryDate BETWEEN :start AND :end")
     Long countDeliveredBetweenDates(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
+    Optional<Order> findByIdAndUserId(String orderId, String userId);
+
+    Optional<Order> findByOrderNumberAndUserId(String orderNumber, String userId);
+
 
 }

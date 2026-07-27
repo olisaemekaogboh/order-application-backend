@@ -9,15 +9,28 @@ public interface AddressService {
 
     AddressDTO createAddress(String userId, AddressRequestDTO addressRequest);
 
-    AddressDTO updateAddress(String addressId, AddressRequestDTO addressRequest);
+    AddressDTO updateAddress(
+            String userId,
+            String addressId,
+            AddressRequestDTO addressRequest
+    );
 
-    AddressDTO getAddressById(String addressId);
+    AddressDTO getAddressById(
+            String userId,
+            String addressId
+    );
+
+    void deleteAddress(
+            String userId,
+            String addressId
+    );
+
+
 
     List<AddressDTO> getUserAddresses(String userId);
 
     AddressDTO getDefaultAddress(String userId);
 
-    void deleteAddress(String addressId);
 
     void setDefaultAddress(String userId, String addressId);
 
