@@ -8,22 +8,32 @@ import java.util.List;
 
 public interface AuditService {
 
-    void logAction(String userId, String action, String entityType, String entityId, String details);
+    PaginatedResponseDTO<AuditLogDTO> getAuditLogs(int page, int size);
 
-    void logActionWithMetadata(String userId, String action, String entityType, String entityId,
-                               String details, String ipAddress, String userAgent);
+    AuditLogDTO getAuditLogById(String auditId);
 
-    AuditLogDTO getAuditLogById(String logId);
+    PaginatedResponseDTO<AuditLogDTO> getAuditLogsByUser(
+            String userId,
+            int page,
+            int size);
 
-    PaginatedResponseDTO<AuditLogDTO> getUserAuditLogs(String userId, int page, int size);
+    PaginatedResponseDTO<AuditLogDTO> getAuditLogsByAction(
+            String action,
+            int page,
+            int size);
 
-    PaginatedResponseDTO<AuditLogDTO> getEntityAuditLogs(String entityType, String entityId, int page, int size);
+    PaginatedResponseDTO<AuditLogDTO> getAuditLogsByEntity(
+            String entityType,
+            int page,
+            int size);
 
-    PaginatedResponseDTO<AuditLogDTO> getAllAuditLogs(int page, int size, String sortBy, String sortDirection);
+    PaginatedResponseDTO<AuditLogDTO> getAuditLogsByDateRange(
+            LocalDateTime start,
+            LocalDateTime end,
+            int page,
+            int size);
 
-    List<AuditLogDTO> getAuditLogsBetweenDates(LocalDateTime startDate, LocalDateTime endDate);
+    void deleteAuditLog(String auditId);
 
-    void cleanupOldAuditLogs(int daysToKeep);
-
-    long countAuditLogsSince(LocalDateTime date);
+    void cleanupAuditLogs(int olderThanDays);
 }

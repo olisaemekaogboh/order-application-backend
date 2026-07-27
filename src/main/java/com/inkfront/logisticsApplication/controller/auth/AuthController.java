@@ -5,6 +5,7 @@ import com.inkfront.logisticsApplication.dto.request.auth.*;
 import com.inkfront.logisticsApplication.dto.response.auth.AuthResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.common.ApiResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.user.UserDTO;
+import com.inkfront.logisticsApplication.security.AuthenticatedUser;
 import com.inkfront.logisticsApplication.service.interfaces.AuthService;
 import com.inkfront.logisticsApplication.util.CookieUtils;
 import io.swagger.v3.oas.annotations.Operation;
@@ -226,16 +227,22 @@ public class AuthController {
      * Current User
      */
     @GetMapping("/me")
-    public ResponseEntity<ApiResponseDTO<UserDTO>> getCurrentUser(Authentication authentication) {
+    @Operation(summary = "Get current authenticated user")
+    public ResponseEntity<ApiResponseDTO<UserDTO>> getCurrentUser(
+            Authentication authentication) {
 
-        String email = authentication.getName();
+        AuthenticatedUser user =
+                (AuthenticatedUser) authentication.getPrincipal();
 
-        UserDTO user = authService.getCurrentUser(email);
+        log.info("Get current user request: {}", user.getEmail());
+
+        UserDTO response =
+                authService.getCurrentUser(user.getId());
 
         return ResponseEntity.ok(
                 ApiResponseDTO.success(
                         SuccessMessages.DATA_RETRIEVED,
-                        user
+                        response
                 )
         );
     }

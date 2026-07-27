@@ -2,7 +2,6 @@ package com.inkfront.logisticsApplication.config;
 
 import com.inkfront.logisticsApplication.security.CustomUserDetailsService;
 import com.inkfront.logisticsApplication.security.JwtAuthenticationFilter;
-
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -32,7 +31,6 @@ public class SecurityConfig {
 
     private final CustomUserDetailsService userDetailsService;
     private final JwtAuthenticationFilter jwtAuthenticationFilter;
-
     private final LogoutSuccessHandler logoutSuccessHandler;
 
     @Bean
@@ -51,21 +49,34 @@ public class SecurityConfig {
 
                 .authorizeHttpRequests(auth -> auth
 
+                        // =========================
+                        // Public Endpoints
+                        // =========================
                         .requestMatchers(
                                 "/api/auth/**",
                                 "/api/public/**",
-
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
                                 "/v3/api-docs/**",
                                 "/webjars/**",
-
                                 "/actuator/health",
-
                                 "/ws/**",
                                 "/ws"
                         ).permitAll()
 
+                        // =========================
+                        // Driver Self-Service
+                        // =========================
+                        .requestMatchers("/api/drivers/me/**")
+                        .hasAnyRole(
+                                "DRIVER",
+                                "ADMIN",
+                                "SUPER_ADMIN"
+                        )
+
+                        // =========================
+                        // Client Endpoints
+                        // =========================
                         .requestMatchers(
                                 "/api/orders/**",
                                 "/api/users/**",
@@ -77,6 +88,9 @@ public class SecurityConfig {
                                 "SUPER_ADMIN"
                         )
 
+                        // =========================
+                        // Admin Endpoints
+                        // =========================
                         .requestMatchers(
                                 "/api/admin/**",
                                 "/api/drivers/**",
@@ -86,14 +100,16 @@ public class SecurityConfig {
                                 "SUPER_ADMIN"
                         )
 
+                        // =========================
+                        // Super Admin Endpoints
+                        // =========================
                         .requestMatchers(
                                 "/api/super-admin/**",
                                 "/api/system/**",
                                 "/api/audit/**"
                         ).hasRole("SUPER_ADMIN")
 
-                        .anyRequest()
-                        .authenticated()
+                        .anyRequest().authenticated()
                 )
 
                 .logout(logout -> logout
@@ -114,6 +130,7 @@ public class SecurityConfig {
 
         return http.build();
     }
+
     @Bean
     public DaoAuthenticationProvider authenticationProvider() {
 
@@ -147,6 +164,8 @@ public class SecurityConfig {
                 "http://localhost:5173",
                 "http://127.0.0.1:5173",
                 "http://localhost:3000"
+                // Add your production frontend here when deploying
+                // "https://yourdomain.com"
         ));
 
         configuration.setAllowedMethods(List.of(
@@ -158,7 +177,11 @@ public class SecurityConfig {
                 "OPTIONS"
         ));
 
-        configuration.setAllowedHeaders(List.of("*"));
+        configuration.setAllowedHeaders(List.of(
+                "Authorization",
+                "Content-Type",
+                "Accept"
+        ));
 
         configuration.setExposedHeaders(List.of(
                 "Authorization"
