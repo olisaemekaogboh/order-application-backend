@@ -17,6 +17,7 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
@@ -46,8 +47,10 @@ public class PaystackPaymentGatewayService implements PaymentGatewayService {
         try {
             // Build request body
             Map<String, Object> payload = new HashMap<>();
-            payload.put("email", getCustomerEmail(transaction)); // you may need to fetch user email from order
-            payload.put("amount", (int) (transaction.getAmount() * 100)); // Paystack uses kobo
+            payload.put("email", getCustomerEmail(transaction));
+            // Convert amount to kobo (multiply by 100) and get int value
+            int amountInKobo = transaction.getAmount().multiply(BigDecimal.valueOf(100)).intValue();
+            payload.put("amount", amountInKobo);
             payload.put("reference", transaction.getTransactionReference());
             payload.put("callback_url", request.getCallbackUrl() != null ? request.getCallbackUrl() : paystackProperties.getCallbackUrl());
             if (request.getMetadata() != null) {
@@ -161,7 +164,9 @@ public class PaystackPaymentGatewayService implements PaymentGatewayService {
         try {
             Map<String, Object> payload = new HashMap<>();
             payload.put("transaction", transaction.getGatewayReference());
-            payload.put("amount", (int) (transaction.getAmount() * 100)); // amount in kobo
+            // Convert amount to kobo (multiply by 100) and get int value
+            int amountInKobo = transaction.getAmount().multiply(BigDecimal.valueOf(100)).intValue();
+            payload.put("amount", amountInKobo);
             payload.put("reason", reason != null ? reason : "Customer requested refund");
 
             HttpHeaders headers = createHeaders();
@@ -211,8 +216,6 @@ public class PaystackPaymentGatewayService implements PaymentGatewayService {
     }
 
     private String getCustomerEmail(PaymentTransaction transaction) {
-        // You need to fetch the user email from the order's user
-        // Assuming your Order entity has a User with email
         try {
             return transaction.getOrder().getUser().getEmail();
         } catch (Exception e) {

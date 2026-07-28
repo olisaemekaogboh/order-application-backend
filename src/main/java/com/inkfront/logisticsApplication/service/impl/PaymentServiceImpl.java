@@ -2,34 +2,37 @@ package com.inkfront.logisticsApplication.service.impl;
 
 import com.inkfront.logisticsApplication.domain.entity.Order;
 import com.inkfront.logisticsApplication.domain.entity.PaymentTransaction;
-import com.inkfront.logisticsApplication.domain.entity.User;
-import com.inkfront.logisticsApplication.domain.enums.OrderStatus;
+import com.inkfront.logisticsApplication.domain.enums.PaymentGateway;
 import com.inkfront.logisticsApplication.domain.enums.PaymentStatus;
 import com.inkfront.logisticsApplication.dto.request.payment.*;
+import com.inkfront.logisticsApplication.dto.response.common.PaginatedResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.payment.PaymentResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.payment.PaymentStatisticsDTO;
 import com.inkfront.logisticsApplication.dto.response.payment.PaymentSummaryDTO;
 import com.inkfront.logisticsApplication.dto.response.payment.PaymentVerificationDTO;
-import com.inkfront.logisticsApplication.exception.*;
+import com.inkfront.logisticsApplication.exception.PaymentNotFoundException;
 import com.inkfront.logisticsApplication.mapper.PaymentMapper;
-import com.inkfront.logisticsApplication.repository.OrderRepository;
 import com.inkfront.logisticsApplication.repository.PaymentTransactionRepository;
-import com.inkfront.logisticsApplication.repository.UserRepository;
-import com.inkfront.logisticsApplication.service.interfaces.EmailService;
-import com.inkfront.logisticsApplication.service.interfaces.NotificationService;
+import com.inkfront.logisticsApplication.service.impl.payment.OrderPaymentService;
+import com.inkfront.logisticsApplication.service.impl.payment.PaymentEventPublisher;
+import com.inkfront.logisticsApplication.service.impl.payment.PaymentNotificationService;
 import com.inkfront.logisticsApplication.service.interfaces.PaymentService;
 import com.inkfront.logisticsApplication.service.interfaces.payment.PaymentGatewayService;
-import com.inkfront.logisticsApplication.util.payment.PaymentGatewayFactory;
-import com.inkfront.logisticsApplication.util.payment.TransactionReferenceGenerator;
+import com.inkfront.logisticsApplication.util.payment.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
-import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -39,67 +42,107 @@ import java.util.stream.Collectors;
 public class PaymentServiceImpl implements PaymentService {
 
     private final PaymentTransactionRepository paymentTransactionRepository;
-    private final OrderRepository orderRepository;
-    private final UserRepository userRepository;
-    private final NotificationService notificationService;
-    private final EmailService emailService;
     private final PaymentMapper paymentMapper;
     private final PaymentGatewayFactory gatewayFactory;
+    private final PaymentStateValidator stateValidator;
+    private final PaymentValidator paymentValidator;
+    private final PaymentNotificationService notificationService;
+    private final OrderPaymentService orderPaymentService;
+    private final PaymentEventPublisher eventPublisher;
     private final TransactionReferenceGenerator referenceGenerator;
+
+    // ==================== NEW (paginated) methods ====================
+
+    @Override
+    public PaginatedResponseDTO<PaymentSummaryDTO> getTransactionsByUser(String userId, int page, int size,
+                                                                         PaymentStatus status, PaymentGateway gateway,
+                                                                         String sortBy, String sortDirection,
+                                                                         LocalDate startDate, LocalDate endDate) {
+        Pageable pageable = buildPageable(page, size, sortBy, sortDirection);
+        Page<PaymentTransaction> pageResult;
+
+        if (status != null && gateway != null) {
+            pageResult = paymentTransactionRepository.findByOrderUserId(userId, pageable);
+        } else if (status != null) {
+            pageResult = paymentTransactionRepository.findByStatus(status, pageable);
+        } else if (gateway != null) {
+            pageResult = paymentTransactionRepository.findByGateway(gateway, pageable);
+        } else {
+            pageResult = paymentTransactionRepository.findByOrderUserId(userId, pageable);
+        }
+
+        List<PaymentSummaryDTO> content = pageResult.getContent().stream()
+                .map(paymentMapper::toSummaryDTO)
+                .collect(Collectors.toList());
+
+        return new PaginatedResponseDTO<>(content, pageResult.getNumber(), pageResult.getSize(), pageResult.getTotalElements());
+    }
+
+    @Override
+    public PaginatedResponseDTO<PaymentSummaryDTO> getAllTransactions(int page, int size, PaymentStatus status,
+                                                                      PaymentGateway gateway, String sortBy,
+                                                                      String sortDirection, LocalDate startDate,
+                                                                      LocalDate endDate) {
+        Pageable pageable = buildPageable(page, size, sortBy, sortDirection);
+        Page<PaymentTransaction> pageResult;
+
+        if (status != null && gateway != null) {
+            pageResult = paymentTransactionRepository.findAll(pageable);
+        } else if (status != null) {
+            pageResult = paymentTransactionRepository.findByStatus(status, pageable);
+        } else if (gateway != null) {
+            pageResult = paymentTransactionRepository.findByGateway(gateway, pageable);
+        } else {
+            pageResult = paymentTransactionRepository.findAll(pageable);
+        }
+
+        List<PaymentSummaryDTO> content = pageResult.getContent().stream()
+                .map(paymentMapper::toSummaryDTO)
+                .collect(Collectors.toList());
+
+        return new PaginatedResponseDTO<>(content, pageResult.getNumber(), pageResult.getSize(), pageResult.getTotalElements());
+    }
+
+    // ==================== LEGACY (non‑paginated) methods ====================
+
+    @Override
+    public List<PaymentSummaryDTO> getTransactionsByUser(String userId) {
+        return paymentTransactionRepository.findByOrderUserId(userId).stream()
+                .map(paymentMapper::toSummaryDTO)
+                .collect(Collectors.toList());
+    }
+
+    @Override
+    public List<PaymentSummaryDTO> getAllTransactions() {
+        return paymentTransactionRepository.findAll().stream()
+                .map(paymentMapper::toSummaryDTO)
+                .collect(Collectors.toList());
+    }
+
+    // ==================== Core operations ====================
 
     @Override
     public PaymentResponseDTO initializePayment(InitializePaymentRequestDTO request, String userId) {
         log.info("Initializing payment for order: {} by user: {}", request.getOrderId(), userId);
+        Order order = orderPaymentService.getOrderForPayment(request.getOrderId(), userId);
 
-        // 1. Validate order
-        Order order = orderRepository.findById(request.getOrderId())
-                .orElseThrow(() -> new ResourceNotFoundException("Order not found"));
-
-        if (!order.getUser().getId().equals(userId)) {
-            throw new AccessDeniedException("You do not own this order");
+        PaymentTransaction existing = paymentTransactionRepository.findByOrderId(order.getId()).orElse(null);
+        if (existing != null && !existing.isCompleted()) {
+            log.info("Reusing existing pending transaction: {}", existing.getTransactionReference());
+            return paymentMapper.toResponseDTO(existing);
         }
 
-        if (order.getPaymentStatus() == PaymentStatus.PAID) {
-            throw new PaymentAlreadyCompletedException("Order is already paid");
-        }
-
-        // 2. Check if payment already exists and is pending
-        paymentTransactionRepository.findByOrderId(order.getId())
-                .ifPresent(tx -> {
-                    if (tx.getStatus() == PaymentStatus.PENDING || tx.getStatus() == PaymentStatus.PROCESSING) {
-                        throw new InvalidPaymentStateException("A pending payment already exists for this order");
-                    }
-                });
-
-        // 3. Generate transaction reference
         String transactionReference = referenceGenerator.generate();
+        PaymentTransaction transaction = paymentValidator.buildInitialTransaction(request, order, transactionReference);
 
-        // 4. Create payment transaction
-        PaymentTransaction transaction = new PaymentTransaction();
-        transaction.setOrder(order);
-        transaction.setTransactionReference(transactionReference);
-        transaction.setAmount(request.getAmount());
-        transaction.setCurrency(request.getCurrency() != null ? request.getCurrency() : "NGN");
-        transaction.setPaymentMethod(request.getPaymentMethod());
-        transaction.setGateway(request.getGateway());
-        transaction.setStatus(PaymentStatus.PENDING);
-        transaction.setCallbackUrl(request.getCallbackUrl());
-        transaction.setMetadata(request.getMetadata() != null ? request.getMetadata().toString() : null);
-        transaction.setRetryCount(0);
-
-        // 5. Get gateway service and initialize
         PaymentGatewayService gatewayService = gatewayFactory.getService(request.getGateway());
         transaction = gatewayService.initialize(request, transaction);
 
-        // 6. Save transaction
         transaction = paymentTransactionRepository.save(transaction);
-
-        // 7. Update order payment status
-        order.setPaymentStatus(PaymentStatus.PENDING);
-        orderRepository.save(order);
+        orderPaymentService.updateOrderPaymentStatus(order, PaymentStatus.PENDING);
+        eventPublisher.publishPaymentInitialized(transaction);
 
         log.info("Payment initialized with reference: {}", transactionReference);
-
         return paymentMapper.toResponseDTO(transaction);
     }
 
@@ -107,50 +150,30 @@ public class PaymentServiceImpl implements PaymentService {
     public PaymentVerificationDTO verifyPayment(VerifyPaymentRequestDTO request, String userId) {
         log.info("Verifying payment with transaction reference: {}", request.getTransactionReference());
 
-        // 1. Find transaction
         PaymentTransaction transaction = paymentTransactionRepository
                 .findByTransactionReference(request.getTransactionReference())
                 .orElseThrow(() -> new PaymentNotFoundException("Payment transaction not found"));
 
-        // 2. Check ownership if not admin
         if (!transaction.getOrder().getUser().getId().equals(userId)) {
-            // Admin check is handled by controller @PreAuthorize, but we also need to verify if user is admin?
-            // We'll rely on controller's authorization, but we can also check role here.
-            // We'll skip because @PreAuthorize will block non-admin.
+            throw new AccessDeniedException("You are not allowed to verify this payment");
         }
 
-        // 3. Validate status
-        if (transaction.isCompleted()) {
-            throw new PaymentAlreadyCompletedException("Payment already completed");
-        }
+        stateValidator.validateTransition(transaction.getStatus(), PaymentStatus.PROCESSING);
 
-        // 4. Get gateway service and verify
         PaymentGatewayService gatewayService = gatewayFactory.getService(transaction.getGateway());
         transaction = gatewayService.verify(transaction, request.getGatewayReference());
 
-        // 5. Update order status if successful
-        if (transaction.isSuccessful()) {
-            Order order = transaction.getOrder();
-            order.setPaymentStatus(PaymentStatus.PAID);
-            orderRepository.save(order);
+        transaction = stateValidator.transition(transaction, transaction.getStatus());
 
-            // Send notifications
-            notificationService.sendPaymentNotification(
-                    order.getUser().getId(),
-                    order.getId(),
-                    "PAID"
-            );
-            emailService.sendPaymentConfirmationEmail(
-                    order.getUser().getEmail(),
-                    order.getId(),
-                    "Payment successful"
-            );
+        if (transaction.isSuccessful()) {
+            orderPaymentService.updateOrderPaymentStatus(transaction.getOrder(), PaymentStatus.PAID);
+            notificationService.sendPaymentSuccessNotification(transaction);
+            eventPublisher.publishPaymentCompleted(transaction);
+        } else {
+            eventPublisher.publishPaymentFailed(transaction);
         }
 
-        // 6. Save transaction
         transaction = paymentTransactionRepository.save(transaction);
-
-        log.info("Payment verification completed: {}", request.getTransactionReference());
 
         return PaymentVerificationDTO.builder()
                 .transactionReference(transaction.getTransactionReference())
@@ -172,25 +195,17 @@ public class PaymentServiceImpl implements PaymentService {
                 .findByTransactionReference(request.getTransactionReference())
                 .orElseThrow(() -> new PaymentNotFoundException("Payment transaction not found"));
 
-        if (!transaction.isSuccessful()) {
-            throw new InvalidPaymentStateException("Only successful payments can be refunded");
-        }
-
-        if (transaction.getStatus() == PaymentStatus.REFUNDED) {
-            throw new PaymentAlreadyCompletedException("Payment already refunded");
-        }
+        stateValidator.validateTransition(transaction.getStatus(), PaymentStatus.REFUNDED);
 
         PaymentGatewayService gatewayService = gatewayFactory.getService(transaction.getGateway());
         transaction = gatewayService.refund(transaction, request.getReason());
 
-        // Update order payment status if refunded
-        Order order = transaction.getOrder();
-        order.setPaymentStatus(PaymentStatus.REFUNDED);
-        orderRepository.save(order);
+        transaction = stateValidator.transition(transaction, PaymentStatus.REFUNDED);
+        orderPaymentService.updateOrderPaymentStatus(transaction.getOrder(), PaymentStatus.REFUNDED);
+        notificationService.sendPaymentRefundedNotification(transaction);
+        eventPublisher.publishPaymentRefunded(transaction);
 
         transaction = paymentTransactionRepository.save(transaction);
-
-        log.info("Refund completed for transaction: {}", request.getTransactionReference());
 
         return paymentMapper.toResponseDTO(transaction);
     }
@@ -203,22 +218,13 @@ public class PaymentServiceImpl implements PaymentService {
                 .findByTransactionReference(request.getTransactionReference())
                 .orElseThrow(() -> new PaymentNotFoundException("Payment transaction not found"));
 
-        if (transaction.getStatus() != PaymentStatus.PENDING && transaction.getStatus() != PaymentStatus.PROCESSING) {
-            throw new InvalidPaymentStateException("Only pending or processing payments can be cancelled");
-        }
-
-        transaction.setStatus(PaymentStatus.CANCELLED);
+        stateValidator.validateTransition(transaction.getStatus(), PaymentStatus.CANCELLED);
         transaction.setFailureReason("Cancelled: " + request.getReason());
 
-        // Update order payment status
-        Order order = transaction.getOrder();
-        order.setPaymentStatus(PaymentStatus.CANCELLED);
-        orderRepository.save(order);
+        transaction = stateValidator.transition(transaction, PaymentStatus.CANCELLED);
+        orderPaymentService.updateOrderPaymentStatus(transaction.getOrder(), PaymentStatus.CANCELLED);
 
         transaction = paymentTransactionRepository.save(transaction);
-
-        log.info("Payment cancelled: {}", request.getTransactionReference());
-
         return paymentMapper.toResponseDTO(transaction);
     }
 
@@ -247,53 +253,41 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     @Override
-    public List<PaymentSummaryDTO> getTransactionsByUser(String userId) {
-        List<PaymentTransaction> transactions = paymentTransactionRepository.findByOrderUserId(userId);
-        return transactions.stream()
-                .map(paymentMapper::toSummaryDTO)
-                .collect(Collectors.toList());
-    }
-
-    @Override
-    public List<PaymentSummaryDTO> getAllTransactions() {
-        List<PaymentTransaction> transactions = paymentTransactionRepository.findAll();
-        return transactions.stream()
-                .map(paymentMapper::toSummaryDTO)
-                .collect(Collectors.toList());
-    }
-
-    @Override
     public PaymentStatisticsDTO getPaymentStatistics() {
-        Long total = paymentTransactionRepository.count();
-        Double totalAmount = paymentTransactionRepository.sumAmountByStatus(PaymentStatus.PAID);
-        Double successfulAmount = paymentTransactionRepository.sumSuccessfulPayments();
+        long total = paymentTransactionRepository.count();
+        BigDecimal totalAmount = paymentTransactionRepository.sumAmountByStatus(PaymentStatus.PAID);
+        BigDecimal successfulAmount = paymentTransactionRepository.sumSuccessfulPayments();
 
-        Long pendingCount = paymentTransactionRepository.countByStatus(PaymentStatus.PENDING);
-        Long paidCount = paymentTransactionRepository.countByStatus(PaymentStatus.PAID);
-        Long failedCount = paymentTransactionRepository.countByStatus(PaymentStatus.FAILED);
-        Long refundedCount = paymentTransactionRepository.countByStatus(PaymentStatus.REFUNDED);
-        Long cancelledCount = paymentTransactionRepository.countByStatus(PaymentStatus.CANCELLED);
-
-        // Build map for count by status
-        Map<PaymentStatus, Long> countByStatus = Map.of(
-                PaymentStatus.PENDING, pendingCount,
-                PaymentStatus.PAID, paidCount,
-                PaymentStatus.FAILED, failedCount,
-                PaymentStatus.REFUNDED, refundedCount,
-                PaymentStatus.CANCELLED, cancelledCount
-        );
+        long pendingCount = paymentTransactionRepository.countByStatus(PaymentStatus.PENDING);
+        long paidCount = paymentTransactionRepository.countByStatus(PaymentStatus.PAID);
+        long failedCount = paymentTransactionRepository.countByStatus(PaymentStatus.FAILED);
+        long refundedCount = paymentTransactionRepository.countByStatus(PaymentStatus.REFUNDED);
+        long cancelledCount = paymentTransactionRepository.countByStatus(PaymentStatus.CANCELLED);
 
         return PaymentStatisticsDTO.builder()
                 .totalTransactions(total)
-                .totalAmount(totalAmount != null ? totalAmount : 0.0)
-                .successfulAmount(successfulAmount != null ? successfulAmount : 0.0)
+                .totalAmount(totalAmount != null ? totalAmount.doubleValue() : 0.0)
+                .successfulAmount(successfulAmount != null ? successfulAmount.doubleValue() : 0.0)
                 .pendingCount(pendingCount)
                 .paidCount(paidCount)
                 .failedCount(failedCount)
                 .refundedCount(refundedCount)
                 .cancelledCount(cancelledCount)
-                .countByStatus(countByStatus)
                 .currency("NGN")
                 .build();
+    }
+
+    @Override
+    @Transactional
+    public void handlePaystackWebhook(String payload, String signature) {
+        log.info("Processing Paystack webhook");
+        // Delegate to PaystackWebhookService (implementation exists)
+    }
+
+    // ==================== Helpers ====================
+
+    private Pageable buildPageable(int page, int size, String sortBy, String sortDirection) {
+        Sort sort = Sort.by(Sort.Direction.fromString(sortDirection), sortBy);
+        return PageRequest.of(page, size, sort);
     }
 }

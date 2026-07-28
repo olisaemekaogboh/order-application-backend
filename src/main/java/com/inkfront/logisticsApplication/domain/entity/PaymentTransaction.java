@@ -7,6 +7,7 @@ import jakarta.persistence.*;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @EqualsAndHashCode(callSuper = true)
@@ -15,15 +16,32 @@ import java.time.LocalDateTime;
 @Table(name = "payment_transactions")
 public class PaymentTransaction extends BaseEntity {
 
-    @OneToOne(fetch = FetchType.LAZY)
+    @Version
+    @Column(name = "version")
+    private Long version;
+
+    @ManyToOne(fetch = FetchType.LAZY)
     @JoinColumn(name = "order_id", nullable = false)
     private Order order;
+
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id")
+    private User user;
 
     @Column(name = "transaction_reference", nullable = false, unique = true)
     private String transactionReference;
 
-    @Column(name = "amount", nullable = false)
-    private Double amount;
+    @Column(name = "amount", precision = 19, scale = 2, nullable = false)
+    private BigDecimal amount;
+
+    @Column(name = "refunded_amount", precision = 19, scale = 2)
+    private BigDecimal refundedAmount = BigDecimal.ZERO;
+
+    @Column(name = "processing_fee", precision = 19, scale = 2)
+    private BigDecimal processingFee = BigDecimal.ZERO;
+
+    @Column(name = "gateway_fee", precision = 19, scale = 2)
+    private BigDecimal gatewayFee = BigDecimal.ZERO;
 
     @Column(name = "currency")
     private String currency = "NGN";
@@ -43,11 +61,41 @@ public class PaymentTransaction extends BaseEntity {
     @Column(name = "gateway_reference")
     private String gatewayReference;
 
-    @Column(name = "gateway_response")
+    @Column(name = "provider_transaction_id")
+    private String providerTransactionId;
+
+    @Column(name = "authorization_code")
+    private String authorizationCode;
+
+    @Column(name = "channel")
+    private String channel;
+
+    @Column(name = "customer_email")
+    private String customerEmail;
+
+    @Column(name = "customer_phone")
+    private String customerPhone;
+
+    @Column(name = "customer_name")
+    private String customerName;
+
+    @Column(name = "ip_address")
+    private String ipAddress;
+
+    @Column(name = "device_id")
+    private String deviceId;
+
+    @Column(name = "gateway_response", columnDefinition = "jsonb")
     private String gatewayResponse;
 
     @Column(name = "payment_date")
     private LocalDateTime paymentDate;
+
+    @Column(name = "verified_at")
+    private LocalDateTime verifiedAt;
+
+    @Column(name = "refunded_at")
+    private LocalDateTime refundedAt;
 
     @Column(name = "authorization_url")
     private String authorizationUrl;
@@ -70,6 +118,12 @@ public class PaymentTransaction extends BaseEntity {
     @Column(name = "retry_count")
     private Integer retryCount = 0;
 
+    @Column(name = "max_retries")
+    private Integer maxRetries = 3;
+
+    @Column(name = "next_retry_date")
+    private LocalDateTime nextRetryDate;
+
     @Column(name = "last_retry_date")
     private LocalDateTime lastRetryDate;
 
@@ -82,5 +136,13 @@ public class PaymentTransaction extends BaseEntity {
 
     public boolean isSuccessful() {
         return this.status == PaymentStatus.PAID;
+    }
+
+    public boolean isRefundable() {
+        return this.status == PaymentStatus.PAID && this.refundedAmount.compareTo(this.amount) < 0;
+    }
+
+    public BigDecimal getRemainingBalance() {
+        return this.amount.subtract(this.refundedAmount);
     }
 }

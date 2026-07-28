@@ -4,11 +4,14 @@ import com.inkfront.logisticsApplication.domain.entity.PaymentTransaction;
 import com.inkfront.logisticsApplication.domain.enums.PaymentGateway;
 import com.inkfront.logisticsApplication.domain.enums.PaymentMethod;
 import com.inkfront.logisticsApplication.domain.enums.PaymentStatus;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -28,11 +31,15 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
 
     List<PaymentTransaction> findByGateway(PaymentGateway gateway);
 
-    /**
-     * Find all transactions belonging to a specific user (via order.user.id).
-     * Spring Data JPA derives the query from the method name.
-     */
     List<PaymentTransaction> findByOrderUserId(String userId);
+
+    Page<PaymentTransaction> findByOrderUserId(String userId, Pageable pageable);
+
+    Page<PaymentTransaction> findByStatus(PaymentStatus status, Pageable pageable);
+
+    Page<PaymentTransaction> findByGateway(PaymentGateway gateway, Pageable pageable);
+
+    Page<PaymentTransaction> findByPaymentMethod(PaymentMethod paymentMethod, Pageable pageable);
 
     @Query("SELECT pt FROM PaymentTransaction pt WHERE pt.paymentDate BETWEEN :startDate AND :endDate")
     List<PaymentTransaction> findTransactionsBetweenDates(
@@ -40,17 +47,24 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
             @Param("endDate") LocalDateTime endDate
     );
 
+    @Query("SELECT pt FROM PaymentTransaction pt WHERE pt.paymentDate BETWEEN :startDate AND :endDate")
+    Page<PaymentTransaction> findTransactionsBetweenDates(
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate,
+            Pageable pageable
+    );
+
     @Query("SELECT pt FROM PaymentTransaction pt WHERE pt.status = 'PENDING' AND pt.createdAt < :date")
     List<PaymentTransaction> findPendingTransactionsOlderThan(@Param("date") LocalDateTime date);
 
     @Query("SELECT SUM(pt.amount) FROM PaymentTransaction pt WHERE pt.status = 'PAID' AND pt.paymentDate BETWEEN :startDate AND :endDate")
-    Double sumSuccessfulPaymentsBetweenDates(
+    BigDecimal sumSuccessfulPaymentsBetweenDates(
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate
     );
 
     @Query("SELECT SUM(pt.amount) FROM PaymentTransaction pt WHERE pt.status = :status")
-    Double sumAmountByStatus(@Param("status") PaymentStatus status);
+    BigDecimal sumAmountByStatus(@Param("status") PaymentStatus status);
 
     long countByStatus(PaymentStatus status);
 
@@ -60,5 +74,5 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
     long countByUserId(@Param("userId") String userId);
 
     @Query("SELECT SUM(pt.amount) FROM PaymentTransaction pt WHERE pt.status = 'PAID'")
-    Double sumSuccessfulPayments();
+    BigDecimal sumSuccessfulPayments();
 }

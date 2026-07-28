@@ -17,6 +17,7 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;
@@ -44,22 +45,19 @@ public class FlutterwavePaymentGatewayService implements PaymentGatewayService {
         log.info("Initializing Flutterwave payment for transaction: {}", transaction.getTransactionReference());
 
         try {
-            // Build request body according to Flutterwave API
             Map<String, Object> payload = new HashMap<>();
             payload.put("tx_ref", transaction.getTransactionReference());
-            payload.put("amount", transaction.getAmount());
+            payload.put("amount", transaction.getAmount().doubleValue());
             payload.put("currency", transaction.getCurrency() != null ? transaction.getCurrency() : "NGN");
             payload.put("redirect_url", request.getCallbackUrl() != null ? request.getCallbackUrl() : flutterwaveProperties.getCallbackUrl());
             payload.put("payment_options", request.getPaymentMethod() != null ? request.getPaymentMethod().name() : "card");
             payload.put("meta", request.getMetadata() != null ? request.getMetadata() : Map.of());
 
-            // Customer details – you need to fetch from order/user
             Map<String, Object> customer = new HashMap<>();
             customer.put("email", getCustomerEmail(transaction));
             customer.put("name", getCustomerName(transaction));
             payload.put("customer", customer);
 
-            // Customizations (optional)
             Map<String, Object> customizations = new HashMap<>();
             customizations.put("title", "Payment for Order " + transaction.getOrder().getOrderNumber());
             payload.put("customizations", customizations);
@@ -169,7 +167,7 @@ public class FlutterwavePaymentGatewayService implements PaymentGatewayService {
 
         try {
             Map<String, Object> payload = new HashMap<>();
-            payload.put("amount", transaction.getAmount());
+            payload.put("amount", transaction.getAmount().doubleValue());
             payload.put("currency", transaction.getCurrency() != null ? transaction.getCurrency() : "NGN");
             payload.put("reason", reason != null ? reason : "Customer requested refund");
 

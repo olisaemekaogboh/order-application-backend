@@ -11,6 +11,7 @@ import org.mapstruct.Mapping;
 import org.mapstruct.Named;
 import org.springframework.beans.factory.annotation.Autowired;
 
+import java.math.BigDecimal;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -31,6 +32,8 @@ public abstract class PaymentMapper {
 
     public abstract List<PaymentSummaryDTO> toSummaryDTOList(List<PaymentTransaction> transactions);
 
+    @Mapping(target = "amount", source = "amount", qualifiedByName = "bigDecimalToDouble")
+
     @Named("jsonToMap")
     protected Map<String, Object> jsonToMap(String json) {
 
@@ -48,5 +51,10 @@ public abstract class PaymentMapper {
             log.error("Failed to deserialize payment metadata.", ex);
             return Collections.emptyMap();
         }
+    }
+
+    @Named("bigDecimalToDouble")
+    protected Double bigDecimalToDouble(BigDecimal value) {
+        return value != null ? value.doubleValue() : null;
     }
 }

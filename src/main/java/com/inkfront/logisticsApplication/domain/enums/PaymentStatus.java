@@ -1,12 +1,11 @@
 package com.inkfront.logisticsApplication.domain.enums;
 
-
-
 public enum PaymentStatus {
     PENDING,
+    PROCESSING,
     PAID,
     FAILED,
-    PROCESSING,
+    REFUND_PENDING,
     REFUNDED,
     CANCELLED
 }
