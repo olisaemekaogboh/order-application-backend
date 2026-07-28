@@ -1,4 +1,4 @@
-package com.inkfront.logisticsApplication.config.properties;
+package com.inkfront.logisticsApplication.config.payment;
 
 import lombok.Data;
 import org.springframework.boot.context.properties.ConfigurationProperties;
@@ -6,11 +6,10 @@ import org.springframework.stereotype.Component;
 
 @Data
 @Component
-@ConfigurationProperties(prefix = "flutterwave")
-public class FlutterwaveProperties {
+@ConfigurationProperties(prefix = "paystack")
+public class PaystackProperties {
     private String secretKey;
     private String publicKey;
-    private String encryptionKey;
-    private String baseUrl = "https://api.flutterwave.com/v3";
+    private String baseUrl = "https://api.paystack.co";
     private String callbackUrl;
 }

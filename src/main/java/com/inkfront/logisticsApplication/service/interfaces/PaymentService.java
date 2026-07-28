@@ -44,5 +44,7 @@ public interface PaymentService {
             String sortBy, String sortDirection, LocalDate startDate, LocalDate endDate
     );
 
+    void handleFlutterwaveWebhook(String payload, String signature);
+
     void handlePaystackWebhook(String payload, String signature);
 }

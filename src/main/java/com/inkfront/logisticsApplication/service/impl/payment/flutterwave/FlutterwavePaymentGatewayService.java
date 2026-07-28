@@ -1,8 +1,8 @@
-package com.inkfront.logisticsApplication.service.impl.payment;
+package com.inkfront.logisticsApplication.service.impl.payment.flutterwave;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.inkfront.logisticsApplication.config.properties.FlutterwaveProperties;
+import com.inkfront.logisticsApplication.config.payment.FlutterwaveProperties;
 import com.inkfront.logisticsApplication.domain.entity.PaymentTransaction;
 import com.inkfront.logisticsApplication.domain.enums.PaymentGateway;
 import com.inkfront.logisticsApplication.domain.enums.PaymentStatus;
@@ -17,7 +17,6 @@ import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.HashMap;
 import java.util.Map;

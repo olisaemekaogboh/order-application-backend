@@ -1,4 +1,4 @@
-package com.inkfront.logisticsApplication.service.impl.payment;
+package com.inkfront.logisticsApplication.service.impl.payment.paystack;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -6,7 +6,9 @@ import com.inkfront.logisticsApplication.domain.entity.PaymentTransaction;
 import com.inkfront.logisticsApplication.domain.enums.PaymentStatus;
 import com.inkfront.logisticsApplication.exception.PaymentNotFoundException;
 import com.inkfront.logisticsApplication.repository.PaymentTransactionRepository;
-import com.inkfront.logisticsApplication.util.payment.PaymentStateValidator;
+import com.inkfront.logisticsApplication.service.impl.payment.OrderPaymentService;
+import com.inkfront.logisticsApplication.service.impl.payment.PaymentNotificationService;
+import com.inkfront.logisticsApplication.validator.payment.PaymentStateValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;

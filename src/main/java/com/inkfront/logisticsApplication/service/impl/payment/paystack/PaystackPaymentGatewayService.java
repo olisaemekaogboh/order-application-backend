@@ -1,8 +1,8 @@
-package com.inkfront.logisticsApplication.service.impl.payment;
+package com.inkfront.logisticsApplication.service.impl.payment.paystack;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import com.inkfront.logisticsApplication.config.properties.PaystackProperties;
+import com.inkfront.logisticsApplication.config.payment.PaystackProperties;
 import com.inkfront.logisticsApplication.domain.entity.PaymentTransaction;
 import com.inkfront.logisticsApplication.domain.enums.PaymentGateway;
 import com.inkfront.logisticsApplication.domain.enums.PaymentStatus;

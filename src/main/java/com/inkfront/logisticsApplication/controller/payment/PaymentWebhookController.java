@@ -22,4 +22,13 @@ public class PaymentWebhookController {
         paymentService.handlePaystackWebhook(payload, signature);
         return ResponseEntity.ok("OK");
     }
+
+    @PostMapping("/flutterwave")
+    public ResponseEntity<String> handleFlutterwaveWebhook(
+            @RequestBody String payload,
+            @RequestHeader("verif-hash") String signature) {
+        log.info("Received Flutterwave webhook");
+        paymentService.handleFlutterwaveWebhook(payload, signature);
+        return ResponseEntity.ok("OK");
+    }
 }

@@ -1,4 +1,4 @@
-package com.inkfront.logisticsApplication.service.impl.payment;
+package com.inkfront.logisticsApplication.events.publisher;
 
 import com.inkfront.logisticsApplication.domain.entity.PaymentTransaction;
 import com.inkfront.logisticsApplication.events.*;

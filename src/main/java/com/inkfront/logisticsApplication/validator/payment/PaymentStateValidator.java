@@ -1,4 +1,4 @@
-package com.inkfront.logisticsApplication.util.payment;
+package com.inkfront.logisticsApplication.validator.payment;
 
 import com.inkfront.logisticsApplication.domain.entity.PaymentTransaction;
 import com.inkfront.logisticsApplication.domain.enums.PaymentStatus;

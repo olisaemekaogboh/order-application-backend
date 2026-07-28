@@ -1,4 +1,4 @@
-package com.inkfront.logisticsApplication.service.impl;
+package com.inkfront.logisticsApplication.service.impl.payment;
 
 import com.inkfront.logisticsApplication.domain.entity.Order;
 import com.inkfront.logisticsApplication.domain.entity.PaymentTransaction;
@@ -10,15 +10,15 @@ import com.inkfront.logisticsApplication.dto.response.payment.PaymentResponseDTO
 import com.inkfront.logisticsApplication.dto.response.payment.PaymentStatisticsDTO;
 import com.inkfront.logisticsApplication.dto.response.payment.PaymentSummaryDTO;
 import com.inkfront.logisticsApplication.dto.response.payment.PaymentVerificationDTO;
+import com.inkfront.logisticsApplication.events.publisher.PaymentEventPublisher;
 import com.inkfront.logisticsApplication.exception.PaymentNotFoundException;
 import com.inkfront.logisticsApplication.mapper.PaymentMapper;
 import com.inkfront.logisticsApplication.repository.PaymentTransactionRepository;
-import com.inkfront.logisticsApplication.service.impl.payment.OrderPaymentService;
-import com.inkfront.logisticsApplication.service.impl.payment.PaymentEventPublisher;
-import com.inkfront.logisticsApplication.service.impl.payment.PaymentNotificationService;
 import com.inkfront.logisticsApplication.service.interfaces.PaymentService;
 import com.inkfront.logisticsApplication.service.interfaces.payment.PaymentGatewayService;
 import com.inkfront.logisticsApplication.util.payment.*;
+import com.inkfront.logisticsApplication.validator.payment.PaymentStateValidator;
+import com.inkfront.logisticsApplication.validator.payment.PaymentValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
@@ -31,7 +31,6 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.LocalDate;
-import java.time.LocalDateTime;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -285,7 +284,12 @@ public class PaymentServiceImpl implements PaymentService {
     }
 
     // ==================== Helpers ====================
-
+    @Override
+    @Transactional
+    public void handleFlutterwaveWebhook(String payload, String signature) {
+        log.info("Processing Flutterwave webhook");
+        // Delegate to FlutterwaveWebhookService (to be created)
+    }
     private Pageable buildPageable(int page, int size, String sortBy, String sortDirection) {
         Sort sort = Sort.by(Sort.Direction.fromString(sortDirection), sortBy);
         return PageRequest.of(page, size, sort);
