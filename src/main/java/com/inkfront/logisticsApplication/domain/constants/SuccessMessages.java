@@ -40,7 +40,10 @@ public class SuccessMessages {
     public static final String CONFIG_UPDATED = "Configuration updated successfully";
     public static final String PRICING_UPDATED = "Pricing updated successfully";
     public static final String REPORT_GENERATED = "Report generated successfully";
-
+    public static final String TRACKING_STARTED = "Tracking started successfully";
+    public static final String TRACKING_UPDATED = "Tracking updated successfully";
+    public static final String TRACKING_COMPLETED = "Tracking completed successfully";
+    public static final String TRACKING_CANCELLED = "Tracking cancelled successfully";
     // General Success
     public static final String OPERATION_SUCCESS = "Operation completed successfully";
     public static final String DATA_RETRIEVED = "Data retrieved successfully";

@@ -1,4 +1,4 @@
-package com.inkfront.logisticsApplication.util.payment;
+package com.inkfront.logisticsApplication.service.impl.payment.gateway;
 
 import com.inkfront.logisticsApplication.domain.enums.PaymentGateway;
 import com.inkfront.logisticsApplication.exception.PaymentGatewayException;

@@ -15,8 +15,11 @@ import com.inkfront.logisticsApplication.exception.PaymentNotFoundException;
 import com.inkfront.logisticsApplication.mapper.PaymentMapper;
 import com.inkfront.logisticsApplication.repository.PaymentTransactionRepository;
 import com.inkfront.logisticsApplication.service.interfaces.PaymentService;
+import com.inkfront.logisticsApplication.service.impl.payment.flutterwave.FlutterwaveWebhookService;
+import com.inkfront.logisticsApplication.service.impl.payment.gateway.PaymentGatewayFactory;
+import com.inkfront.logisticsApplication.service.impl.payment.paystack.PaystackWebhookService;
 import com.inkfront.logisticsApplication.service.interfaces.payment.PaymentGatewayService;
-import com.inkfront.logisticsApplication.util.payment.*;
+import com.inkfront.logisticsApplication.util.payment.TransactionReferenceGenerator;
 import com.inkfront.logisticsApplication.validator.payment.PaymentStateValidator;
 import com.inkfront.logisticsApplication.validator.payment.PaymentValidator;
 import lombok.RequiredArgsConstructor;
@@ -49,6 +52,8 @@ public class PaymentServiceImpl implements PaymentService {
     private final OrderPaymentService orderPaymentService;
     private final PaymentEventPublisher eventPublisher;
     private final TransactionReferenceGenerator referenceGenerator;
+    private final PaystackWebhookService paystackWebhookService;
+    private final FlutterwaveWebhookService flutterwaveWebhookService;
 
     // ==================== NEW (paginated) methods ====================
 
@@ -276,20 +281,24 @@ public class PaymentServiceImpl implements PaymentService {
                 .build();
     }
 
+    // ==================== Webhook handlers ====================
+
     @Override
     @Transactional
     public void handlePaystackWebhook(String payload, String signature) {
         log.info("Processing Paystack webhook");
-        // Delegate to PaystackWebhookService (implementation exists)
+        paystackWebhookService.processWebhook(payload, signature);
     }
 
-    // ==================== Helpers ====================
     @Override
     @Transactional
     public void handleFlutterwaveWebhook(String payload, String signature) {
         log.info("Processing Flutterwave webhook");
-        // Delegate to FlutterwaveWebhookService (to be created)
+        flutterwaveWebhookService.processWebhook(payload, signature);
     }
+
+    // ==================== Helper ====================
+
     private Pageable buildPageable(int page, int size, String sortBy, String sortDirection) {
         Sort sort = Sort.by(Sort.Direction.fromString(sortDirection), sortBy);
         return PageRequest.of(page, size, sort);

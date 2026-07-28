@@ -2,6 +2,7 @@ package com.inkfront.logisticsApplication.service.impl.payment.paystack;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.inkfront.logisticsApplication.config.payment.PaystackProperties;
 import com.inkfront.logisticsApplication.domain.entity.PaymentTransaction;
 import com.inkfront.logisticsApplication.domain.enums.PaymentStatus;
 import com.inkfront.logisticsApplication.exception.PaymentNotFoundException;
@@ -30,11 +31,9 @@ public class PaystackWebhookService {
     private final OrderPaymentService orderPaymentService;
     private final PaymentNotificationService notificationService;
     private final ObjectMapper objectMapper;
-
-    private static final String PAYSTACK_SECRET_KEY = "your_paystack_secret_key"; // should be injected from properties
+    private final PaystackProperties paystackProperties;  // injected instead of hardcoded key
 
     public void processWebhook(String payload, String signature) {
-        // 1. Verify signature
         if (!verifySignature(payload, signature)) {
             log.warn("Invalid Paystack webhook signature");
             return;
@@ -86,19 +85,32 @@ public class PaystackWebhookService {
 
     @Transactional
     protected void handleChargeFailed(JsonNode data) {
-        // similar logic
+        String reference = data.path("reference").asText();
+        PaymentTransaction transaction = paymentTransactionRepository
+                .findByTransactionReference(reference)
+                .orElseThrow(() -> new PaymentNotFoundException("Transaction not found: " + reference));
+
+        if (transaction.isCompleted()) return;
+
+        stateValidator.transition(transaction, PaymentStatus.FAILED);
+        transaction.setFailureReason(data.path("gateway_response").asText("Payment failed"));
+        transaction.setGatewayResponse(data.toString());
+        paymentTransactionRepository.save(transaction);
+
+        notificationService.sendPaymentFailedNotification(transaction);
+        log.info("Webhook: charge.failed processed for transaction: {}", reference);
     }
 
     @Transactional
     protected void handleRefundProcessed(JsonNode data) {
-        // similar logic
+        // Implement refund handling if needed
     }
 
     private boolean verifySignature(String payload, String signature) {
         try {
             Mac sha512Hmac = Mac.getInstance("HmacSHA512");
             SecretKeySpec keySpec = new SecretKeySpec(
-                    PAYSTACK_SECRET_KEY.getBytes(StandardCharsets.UTF_8),
+                    paystackProperties.getSecretKey().getBytes(StandardCharsets.UTF_8),
                     "HmacSHA512"
             );
             sha512Hmac.init(keySpec);
