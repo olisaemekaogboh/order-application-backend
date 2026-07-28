@@ -1,25 +1,44 @@
 package com.inkfront.logisticsApplication.service.interfaces;
 
-import com.inkfront.logisticsApplication.dto.request.admin.RevenueReportRequestDTO;
-import com.inkfront.logisticsApplication.dto.response.revenue.RevenueReportDTO;
-
-import java.io.ByteArrayOutputStream;
+import com.inkfront.logisticsApplication.dto.request.report.*;
+import com.inkfront.logisticsApplication.dto.response.report.*;
+import org.springframework.core.io.Resource;
 
 public interface ReportService {
 
     RevenueReportDTO generateRevenueReport(RevenueReportRequestDTO request);
 
-    ByteArrayOutputStream exportReportToPDF(RevenueReportDTO report);
+    OrderReportDTO generateOrderReport(OrderReportRequestDTO request);
 
-    ByteArrayOutputStream exportReportToExcel(RevenueReportDTO report);
+    DriverReportDTO generateDriverReport(DriverReportRequestDTO request);
 
-    ByteArrayOutputStream exportReportToCSV(RevenueReportDTO report);
+    CustomerReportDTO generateCustomerReport(CustomerReportRequestDTO request);
 
-    void scheduleDailyReportGeneration();
+    DeliveryPerformanceReportDTO generateDeliveryReport(DeliveryReportRequestDTO request);
 
-    void scheduleWeeklyReportGeneration();
+    DashboardAnalyticsReportDTO generateDashboardAnalytics();
 
-    void scheduleMonthlyReportGeneration();
+    Resource exportRevenueReportToPdf(RevenueReportRequestDTO request);
 
-    void scheduleYearlyReportGeneration();
+    Resource exportRevenueReportToExcel(RevenueReportRequestDTO request);
+
+    Resource exportRevenueReportToCsv(RevenueReportRequestDTO request);
+
+    Resource exportOrderReportToPdf(OrderReportRequestDTO request);
+
+    Resource exportOrderReportToExcel(OrderReportRequestDTO request);
+
+    Resource exportOrderReportToCsv(OrderReportRequestDTO request);
+
+    Resource exportDriverReportToPdf(DriverReportRequestDTO request);
+
+    Resource exportDriverReportToExcel(DriverReportRequestDTO request);
+
+    Resource exportDriverReportToCsv(DriverReportRequestDTO request);
+
+    Resource exportCustomerReportToPdf(CustomerReportRequestDTO request);
+
+    Resource exportCustomerReportToExcel(CustomerReportRequestDTO request);
+
+    Resource exportCustomerReportToCsv(CustomerReportRequestDTO request);
 }
