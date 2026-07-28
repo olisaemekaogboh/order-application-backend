@@ -50,4 +50,5 @@ public class SuccessMessages {
     public static final String DELETED_SUCCESSFULLY = "Deleted Successfully";
     public static final String UPDATED_SUCCESSFULLY = "Updated Successfully";
     public static final String PRICING_DELETED = "Price Deleted Successful";
+    public static final String PAYMENT_CANCELLED = "Payment Cancelled" ;
 }

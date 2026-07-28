@@ -209,6 +209,7 @@ sms:
 payment:
   provider: ${PAYMENT_PROVIDER:paystack}
   paystack:
+    base-url: https://api.paystack.co
     secret-key: ${PAYSTACK_SECRET_KEY:your-paystack-secret-key}
     public-key: ${PAYSTACK_PUBLIC_KEY:your-paystack-public-key}
     callback-url: ${PAYSTACK_CALLBACK_URL:http://localhost:8080/api/payments/callback}
@@ -216,7 +217,8 @@ payment:
     public-key: ${FLUTTERWAVE_PUBLIC_KEY:your-flutterwave-public-key}
     secret-key: ${FLUTTERWAVE_SECRET_KEY:your-flutterwave-secret-key}
     encryption-key: ${FLUTTERWAVE_ENCRYPTION_KEY:your-flutterwave-encryption-key}
-
+    base-url: https://api.flutterwave.com/v3
+    callback-url: https://your-app.com/api/payments/verify
 # Google Maps
 google:
   maps:

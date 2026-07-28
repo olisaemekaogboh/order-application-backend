@@ -1,4 +1,6 @@
 package com.inkfront.logisticsApplication.domain.entity;
+
+import com.inkfront.logisticsApplication.domain.enums.PaymentGateway;
 import com.inkfront.logisticsApplication.domain.enums.PaymentMethod;
 import com.inkfront.logisticsApplication.domain.enums.PaymentStatus;
 import jakarta.persistence.*;
@@ -31,6 +33,10 @@ public class PaymentTransaction extends BaseEntity {
     private PaymentMethod paymentMethod;
 
     @Enumerated(EnumType.STRING)
+    @Column(name = "gateway", nullable = false)
+    private PaymentGateway gateway;
+
+    @Enumerated(EnumType.STRING)
     @Column(name = "status", nullable = false)
     private PaymentStatus status = PaymentStatus.PENDING;
 
@@ -42,6 +48,15 @@ public class PaymentTransaction extends BaseEntity {
 
     @Column(name = "payment_date")
     private LocalDateTime paymentDate;
+
+    @Column(name = "authorization_url")
+    private String authorizationUrl;
+
+    @Column(name = "access_code")
+    private String accessCode;
+
+    @Column(name = "callback_url")
+    private String callbackUrl;
 
     @Column(name = "payment_data", columnDefinition = "jsonb")
     private String paymentData;
@@ -57,4 +72,15 @@ public class PaymentTransaction extends BaseEntity {
 
     @Column(name = "last_retry_date")
     private LocalDateTime lastRetryDate;
+
+    public boolean isCompleted() {
+        return this.status == PaymentStatus.PAID ||
+                this.status == PaymentStatus.FAILED ||
+                this.status == PaymentStatus.REFUNDED ||
+                this.status == PaymentStatus.CANCELLED;
+    }
+
+    public boolean isSuccessful() {
+        return this.status == PaymentStatus.PAID;
+    }
 }
