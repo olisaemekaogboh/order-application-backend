@@ -1,11 +1,17 @@
 package com.inkfront.logisticsApplication.domain.enums;
 
-
 public enum VehicleType {
     MOTORCYCLE("Motorcycle"),
-    MINI_VAN("Mini Van"),
-    STANDARD("Standard"),
-    TRUCK("Truck");
+    TRICYCLE("Tricycle"),
+    SEDAN("Sedan"),
+    SUV("SUV"),
+    PICKUP("Pickup"),
+    VAN("Van"),
+    MINI_TRUCK("Mini Truck"),
+    TRUCK("Truck"),
+    TRAILER("Trailer"),
+    REFRIGERATED_TRUCK("Refrigerated Truck"),
+    TANKER("Tanker");
 
     private final String displayName;
 

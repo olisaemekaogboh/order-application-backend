@@ -99,6 +99,8 @@ public class SecurityConfig {
                                 "ADMIN",
                                 "SUPER_ADMIN"
                         )
+                        .requestMatchers("/api/vehicles/**", "/api/fleet/**", "/api/vehicle-analytics/**")
+                        .hasAnyRole("ADMIN", "FLEET_MANAGER")
 
                         // =========================
                         // Super Admin Endpoints

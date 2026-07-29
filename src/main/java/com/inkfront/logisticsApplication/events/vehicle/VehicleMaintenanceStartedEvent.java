@@ -1,0 +1,15 @@
+package com.inkfront.logisticsApplication.events.vehicle;
+
+import com.inkfront.logisticsApplication.domain.entity.vehicle.Vehicle;
+import lombok.Getter;
+import org.springframework.context.ApplicationEvent;
+
+@Getter
+public class VehicleMaintenanceStartedEvent extends ApplicationEvent {
+    private final Vehicle vehicle;
+
+    public VehicleMaintenanceStartedEvent(Object source, Vehicle vehicle) {
+        super(source);
+        this.vehicle = vehicle;
+    }
+}

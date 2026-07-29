@@ -54,4 +54,11 @@ public class SuccessMessages {
     public static final String UPDATED_SUCCESSFULLY = "Updated Successfully";
     public static final String PRICING_DELETED = "Price Deleted Successful";
     public static final String PAYMENT_CANCELLED = "Payment Cancelled" ;
+
+    public static final String VEHICLE_CREATED = "Vehicle created successfully";
+    public static final String VEHICLE_UPDATED = "Vehicle updated successfully";
+    public static final String VEHICLE_DELETED = "Vehicle deleted successfully";
+    public static final String VEHICLE_ASSIGNED = "Vehicle assigned successfully";
+    public static final String MAINTENANCE_SCHEDULED = "Maintenance scheduled successfully";
+    public static final String INSPECTION_SCHEDULED = "Inspection scheduled successfully";
 }
