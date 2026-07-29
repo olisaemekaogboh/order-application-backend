@@ -1,0 +1,19 @@
+package com.inkfront.logisticsApplication.domain.enums;
+
+public enum DispatchStatus {
+    PENDING,
+    SEARCHING_DRIVER,
+    SEARCHING_VEHICLE,
+    DRIVER_ASSIGNED,
+    VEHICLE_ASSIGNED,
+    WAITING_DRIVER_ACCEPTANCE,
+    DRIVER_ACCEPTED,
+    DRIVER_REJECTED,
+    EN_ROUTE_PICKUP,
+    PICKUP_COMPLETED,
+    DELIVERY_IN_PROGRESS,
+    DELIVERED,
+    FAILED,
+    REASSIGNED,
+    CANCELLED
+}

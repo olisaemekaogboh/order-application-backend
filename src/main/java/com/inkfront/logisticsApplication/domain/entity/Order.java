@@ -7,6 +7,7 @@ package com.inkfront.logisticsApplication.domain.entity;
 import com.inkfront.logisticsApplication.domain.enums.OrderStatus;
 import com.inkfront.logisticsApplication.domain.enums.PaymentMethod;
 import com.inkfront.logisticsApplication.domain.enums.PaymentStatus;
+import com.inkfront.logisticsApplication.domain.entity.dispatch.Dispatch;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -129,6 +130,9 @@ public class Order extends BaseEntity {
 
     @OneToOne(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private DriverEarning driverEarning;
+
+    @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
+    private List<Dispatch> dispatches = new ArrayList<>();
 
     @OneToOne(mappedBy = "order", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private PaymentTransaction paymentTransaction;

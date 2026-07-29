@@ -61,4 +61,8 @@ public class SuccessMessages {
     public static final String VEHICLE_ASSIGNED = "Vehicle assigned successfully";
     public static final String MAINTENANCE_SCHEDULED = "Maintenance scheduled successfully";
     public static final String INSPECTION_SCHEDULED = "Inspection scheduled successfully";
+    public static final String DISPATCH_CREATED = "Dispatch created successfully";
+    public static final String DISPATCH_UPDATED = "Dispatch updated successfully";
+    public static final String DISPATCH_CANCELLED = "Dispatch cancelled successfully";
+    public static final String DISPATCH_COMPLETED = "Dispatch completed successfully";
 }
