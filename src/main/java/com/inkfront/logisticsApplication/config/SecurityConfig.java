@@ -49,38 +49,36 @@ public class SecurityConfig {
 
                 .authorizeHttpRequests(auth -> auth
 
-                        // =========================
-                        // Public Endpoints
-                        // =========================
+                        // =====================================================
+                        // PUBLIC ENDPOINTS
+                        // =====================================================
                         .requestMatchers(
                                 "/api/auth/**",
                                 "/api/public/**",
+
                                 "/swagger-ui/**",
                                 "/swagger-ui.html",
                                 "/v3/api-docs/**",
                                 "/webjars/**",
+
                                 "/actuator/health",
+
                                 "/ws/**",
-                                "/ws"
+                                "/ws",
+
+                                // Payment gateway callbacks
+                                "/api/payment-webhooks/**"
                         ).permitAll()
 
-                        // =========================
-                        // Driver Self-Service
-                        // =========================
-                        .requestMatchers("/api/drivers/me/**")
-                        .hasAnyRole(
-                                "DRIVER",
-                                "ADMIN",
-                                "SUPER_ADMIN"
-                        )
-
-                        // =========================
-                        // Client Endpoints
-                        // =========================
+                        // =====================================================
+                        // CLIENT / CUSTOMER
+                        // =====================================================
                         .requestMatchers(
                                 "/api/orders/**",
                                 "/api/users/**",
                                 "/api/addresses/**",
+                                "/api/payments/**",
+                                "/api/reviews/**",
                                 "/api/notifications/**"
                         ).hasAnyRole(
                                 "CLIENT",
@@ -88,30 +86,83 @@ public class SecurityConfig {
                                 "SUPER_ADMIN"
                         )
 
-                        // =========================
-                        // Admin Endpoints
-                        // =========================
+                        // =====================================================
+                        // DRIVER SELF SERVICE
+                        // =====================================================
                         .requestMatchers(
-                                "/api/admin/**",
-                                "/api/drivers/**",
-                                "/api/revenue/**"
+                                "/api/drivers/me/**",
+                                "/api/tracking/me/**"
+                        ).hasAnyRole(
+                                "DRIVER",
+                                "ADMIN",
+                                "SUPER_ADMIN"
+                        )
+
+                        // =====================================================
+                        // DRIVER / DISPATCH OPERATIONS
+                        // =====================================================
+                        .requestMatchers(
+                                "/api/dispatch/**",
+                                "/api/tracking/**"
+                        ).hasAnyRole(
+                                "DRIVER",
+                                "DISPATCHER",
+                                "ADMIN",
+                                "SUPER_ADMIN"
+                        )
+
+                        // =====================================================
+                        // FLEET MANAGEMENT
+                        // =====================================================
+                        .requestMatchers(
+                                "/api/vehicles/**",
+                                "/api/fleet/**",
+                                "/api/vehicle-assignments/**",
+                                "/api/vehicle-maintenance/**",
+                                "/api/vehicle-inspections/**",
+                                "/api/vehicle-documents/**",
+                                "/api/vehicle-analytics/**"
+                        ).hasAnyRole(
+                                "FLEET_MANAGER",
+                                "ADMIN",
+                                "SUPER_ADMIN"
+                        )
+
+                        // =====================================================
+                        // REPORTS & ANALYTICS
+                        // =====================================================
+                        .requestMatchers(
+                                "/api/dashboard/**",
+                                "/api/reports/**",
+                                "/api/revenue/**",
+                                "/api/tracking-analytics/**"
                         ).hasAnyRole(
                                 "ADMIN",
                                 "SUPER_ADMIN"
                         )
-                        .requestMatchers("/api/vehicles/**", "/api/fleet/**", "/api/vehicle-analytics/**")
-                        .hasAnyRole("ADMIN", "FLEET_MANAGER")
-                        .requestMatchers("/api/dispatch/**", "/api/dispatch/analytics/**")
-                        .hasAnyRole("ADMIN", "DISPATCHER", "DRIVER")
-                        // =========================
-                        // Super Admin Endpoints
-                        // =========================
+
+                        // =====================================================
+                        // ADMIN
+                        // =====================================================
                         .requestMatchers(
-                                "/api/super-admin/**",
+                                "/api/admin/**"
+                        ).hasAnyRole(
+                                "ADMIN",
+                                "SUPER_ADMIN"
+                        )
+
+                        // =====================================================
+                        // SUPER ADMIN
+                        // =====================================================
+                        .requestMatchers(
                                 "/api/system/**",
-                                "/api/audit/**"
+                                "/api/audit/**",
+                                "/api/super-admin/**"
                         ).hasRole("SUPER_ADMIN")
 
+                        // =====================================================
+                        // EVERYTHING ELSE
+                        // =====================================================
                         .anyRequest().authenticated()
                 )
 
@@ -167,7 +218,7 @@ public class SecurityConfig {
                 "http://localhost:5173",
                 "http://127.0.0.1:5173",
                 "http://localhost:3000"
-                // Add your production frontend here when deploying
+                // Production
                 // "https://yourdomain.com"
         ));
 
@@ -183,7 +234,9 @@ public class SecurityConfig {
         configuration.setAllowedHeaders(List.of(
                 "Authorization",
                 "Content-Type",
-                "Accept"
+                "Accept",
+                "Origin",
+                "X-Requested-With"
         ));
 
         configuration.setExposedHeaders(List.of(
@@ -191,6 +244,8 @@ public class SecurityConfig {
         ));
 
         configuration.setAllowCredentials(true);
+
+        configuration.setMaxAge(3600L);
 
         UrlBasedCorsConfigurationSource source =
                 new UrlBasedCorsConfigurationSource();
