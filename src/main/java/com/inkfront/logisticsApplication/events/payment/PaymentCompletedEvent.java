@@ -1,5 +1,5 @@
 // PaymentCompletedEvent.java
-package com.inkfront.logisticsApplication.events;
+package com.inkfront.logisticsApplication.events.payment;
 
 import com.inkfront.logisticsApplication.domain.entity.PaymentTransaction;
 import lombok.Getter;

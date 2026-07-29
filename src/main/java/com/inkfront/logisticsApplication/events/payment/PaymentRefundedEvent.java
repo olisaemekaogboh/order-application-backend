@@ -1,13 +1,14 @@
-package com.inkfront.logisticsApplication.events;
+package com.inkfront.logisticsApplication.events.payment;
 
 import com.inkfront.logisticsApplication.domain.entity.PaymentTransaction;
 import lombok.Getter;
 import org.springframework.context.ApplicationEvent;
 
 @Getter
-public class PaymentFailedEvent extends ApplicationEvent {
+public class PaymentRefundedEvent extends ApplicationEvent {
     private final PaymentTransaction transaction;
-    public PaymentFailedEvent(Object source, PaymentTransaction transaction) {
+
+    public PaymentRefundedEvent(Object source, PaymentTransaction transaction) {
         super(source);
         this.transaction = transaction;
     }

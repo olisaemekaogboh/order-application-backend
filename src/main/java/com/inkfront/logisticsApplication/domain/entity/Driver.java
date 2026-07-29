@@ -79,6 +79,24 @@ public class Driver extends BaseEntity {
     @Column(name = "total_earnings")
     private Double totalEarnings = 0.0;
 
+    @Column(name = "total_reviews")
+    private Integer totalReviews = 0;
+
+    @Column(name = "five_star_count")
+    private Integer fiveStarCount = 0;
+
+    @Column(name = "four_star_count")
+    private Integer fourStarCount = 0;
+
+    @Column(name = "three_star_count")
+    private Integer threeStarCount = 0;
+
+    @Column(name = "two_star_count")
+    private Integer twoStarCount = 0;
+
+    @Column(name = "one_star_count")
+    private Integer oneStarCount = 0;
+
     @Column(name = "completed_orders")
     private Integer completedOrders = 0;
 

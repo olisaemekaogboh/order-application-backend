@@ -65,4 +65,10 @@ public class SuccessMessages {
     public static final String DISPATCH_UPDATED = "Dispatch updated successfully";
     public static final String DISPATCH_CANCELLED = "Dispatch cancelled successfully";
     public static final String DISPATCH_COMPLETED = "Dispatch completed successfully";
+    public static final String REVIEW_CREATED = "Review created successfully";
+    public static final String REVIEW_UPDATED = "Review updated successfully";
+    public static final String REVIEW_DELETED = "Review deleted successfully";
+    public static final String REVIEW_APPROVED = "Review approved successfully";
+    public static final String REVIEW_REJECTED = "Review rejected successfully";
+    public static final String REVIEW_REPORTED = "Review reported successfully";
 }

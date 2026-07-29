@@ -5,6 +5,7 @@ import com.inkfront.logisticsApplication.dto.request.dashboard.*;
 import com.inkfront.logisticsApplication.dto.response.admin.DashboardStatsDTO;
 import com.inkfront.logisticsApplication.dto.response.common.ApiResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.dashboard.*;
+import com.inkfront.logisticsApplication.dto.response.review.ReviewAnalyticsDTO;
 import com.inkfront.logisticsApplication.service.interfaces.DashboardService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -49,7 +50,6 @@ public class DashboardController {
     @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
     public ResponseEntity<ApiResponseDTO<DashboardStatsDTO>> getDashboardSummary() {
         log.info("Dashboard summary requested");
-        // For backward compatibility, call the old method.
         DashboardStatsDTO response = dashboardService.getAdminDashboardStats();
         return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, response));
     }
@@ -102,6 +102,17 @@ public class DashboardController {
             @Valid @RequestBody OrderAnalyticsRequestDTO request) {
         log.info("Order analytics requested for status: {}", request.getStatus());
         OrderAnalyticsDTO response = dashboardService.getOrderAnalytics(request);
+        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, response));
+    }
+
+    // ========== NEW REVIEW ANALYTICS ENDPOINT ==========
+
+    @GetMapping("/reviews")
+    @Operation(summary = "Get review analytics for dashboard")
+    @PreAuthorize("hasAnyRole('ADMIN','SUPER_ADMIN')")
+    public ResponseEntity<ApiResponseDTO<ReviewAnalyticsDTO>> getReviewAnalytics() {
+        log.info("Review analytics requested for dashboard");
+        ReviewAnalyticsDTO response = dashboardService.getReviewAnalytics();
         return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, response));
     }
 }

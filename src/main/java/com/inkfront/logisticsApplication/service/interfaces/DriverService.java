@@ -13,7 +13,7 @@ public interface DriverService {
 
 
 
-
+    void updateDriverRatingStats(String driverId);
 
     DriverDTO registerDriver(
             DriverRegistrationRequestDTO registrationRequest);
