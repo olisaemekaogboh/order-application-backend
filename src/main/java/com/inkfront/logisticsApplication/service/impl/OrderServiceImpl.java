@@ -169,8 +169,6 @@ public class OrderServiceImpl implements OrderService {
 
         order = orderRepository.save(order);
 
-        // ===== CREATE PAYMENT RECORD FOR THE ORDER =====
-        createPaymentForOrder(order, user);
 
         notificationService.sendOrderUpdateNotification(
                 userId,
@@ -180,49 +178,7 @@ public class OrderServiceImpl implements OrderService {
         return orderMapper.toDTO(order);
     }
 
-    // ===== Helper method to create payment for order =====
-    private void createPaymentForOrder(Order order, User user) {
-        try {
-            PaymentTransaction payment = new PaymentTransaction();
-            payment.setOrder(order);
-            payment.setUser(user);
-            payment.setAmount(BigDecimal.valueOf(order.getTotalPrice()));
-            payment.setCurrency(order.getCurrency() != null ? order.getCurrency() : "NGN");
-            payment.setStatus(PaymentStatus.PENDING);
-            payment.setTransactionReference(generateTransactionReference());
 
-            // Set required fields with default values
-            payment.setPaymentMethod(PaymentMethod.CARD); // Set a default payment method
-            payment.setGateway(PaymentGateway.PAYSTACK); // Set a default gateway
-
-            payment.setRefundedAmount(BigDecimal.ZERO);
-            payment.setProcessingFee(BigDecimal.ZERO);
-            payment.setGatewayFee(BigDecimal.ZERO);
-            payment.setRetryCount(0);
-            payment.setMaxRetries(3);
-            payment.setCreatedAt(LocalDateTime.now());
-            payment.setUpdatedAt(LocalDateTime.now());
-            payment.setVersion(0L);
-
-            // Set customer info if available
-            if (user != null) {
-                payment.setCustomerEmail(user.getEmail());
-                payment.setCustomerName(user.getFirstName() + " " + user.getLastName());
-                payment.setCustomerPhone(user.getPhoneNumber());
-            }
-
-            paymentTransactionRepository.save(payment);
-            log.info("Created payment record for order: {} with reference: {}",
-                    order.getOrderNumber(), payment.getTransactionReference());
-        } catch (Exception e) {
-            log.error("Failed to create payment for order {}: {}", order.getOrderNumber(), e.getMessage(), e);
-        }
-    }
-
-    // ===== Helper method to generate transaction reference =====
-    private String generateTransactionReference() {
-        return "TXN-" + System.currentTimeMillis() + "-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
-    }
 
 
 

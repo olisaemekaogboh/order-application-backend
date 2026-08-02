@@ -85,8 +85,7 @@ public class PaymentTransaction extends BaseEntity {
     @Column(name = "device_id")
     private String deviceId;
 
-    @Column(name = "gateway_response", columnDefinition = "jsonb")
-    private String gatewayResponse;
+
 
     @Column(name = "payment_date")
     private LocalDateTime paymentDate;
@@ -106,10 +105,13 @@ public class PaymentTransaction extends BaseEntity {
     @Column(name = "callback_url")
     private String callbackUrl;
 
-    @Column(name = "payment_data", columnDefinition = "jsonb")
+    @Column(name = "gateway_response")
+    private String gatewayResponse;
+
+    @Column(name = "payment_data")
     private String paymentData;
 
-    @Column(name = "metadata", columnDefinition = "jsonb")
+    @Column(name = "metadata")
     private String metadata;
 
     @Column(name = "failure_reason")
