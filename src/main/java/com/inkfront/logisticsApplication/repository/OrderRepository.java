@@ -11,7 +11,6 @@ import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
 import org.springframework.stereotype.Repository;
 
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -34,10 +33,9 @@ public interface OrderRepository extends JpaRepository<Order, String> {
     List<Order> findByDriverIdAndStatusIn(String driverId, List<OrderStatus> statuses);
 
     long countByUserId(String userId);
-    long countByUserIdAndStatusIn(
-            String userId,
-            List<OrderStatus> statuses
-    );
+
+    long countByUserIdAndStatusIn(String userId, List<OrderStatus> statuses);
+
     long countByDriverId(String driverId);
 
     long countByStatus(OrderStatus status);
@@ -69,12 +67,21 @@ public interface OrderRepository extends JpaRepository<Order, String> {
             @Param("endDate") LocalDateTime endDate
     );
 
+    // FIXED: Correct method signature with Pageable
     @Query("SELECT o FROM Order o WHERE o.orderDate BETWEEN :startDate AND :endDate AND o.status = :status")
     Page<Order> findOrdersBetweenDatesAndStatus(
-            LocalDateTime startDate,
-            LocalDateTime endDate,
-            OrderStatus status,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate,
+            @Param("status") OrderStatus status,
             Pageable pageable
+    );
+
+    // FIXED: Added List version for non-paginated queries
+    @Query("SELECT o FROM Order o WHERE o.orderDate BETWEEN :startDate AND :endDate AND o.status = :status")
+    List<Order> findOrdersBetweenDatesAndStatusList(
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate,
+            @Param("status") OrderStatus status
     );
 
     @Query("SELECT SUM(o.totalPrice) FROM Order o WHERE o.orderDate BETWEEN :startDate AND :endDate AND o.status = 'DELIVERED'")
@@ -102,20 +109,12 @@ public interface OrderRepository extends JpaRepository<Order, String> {
     @Modifying
     @Query("UPDATE Order o SET o.paymentStatus = :paymentStatus WHERE o.id = :orderId")
     void updatePaymentStatus(@Param("orderId") String orderId, @Param("paymentStatus") PaymentStatus paymentStatus);
-    @Query("""
-       SELECT o
-       FROM Order o
-       WHERE o.orderDate BETWEEN :startDate
-       AND :endDate
-       AND o.status = :status
-       """)
-    List<Order> findOrdersBetweenDatesAndStatus(
-            @Param("startDate") LocalDateTime startDate,
-            @Param("endDate") LocalDateTime endDate,
-            @Param("status") OrderStatus status
-    );
-    // repository/OrderRepository.java - Add these methods
 
+    Optional<Order> findByIdAndUserId(String orderId, String userId);
+
+    Optional<Order> findByOrderNumberAndUserId(String orderNumber, String userId);
+
+    // Analytics Methods
     @Query("SELECT COUNT(o) FROM Order o WHERE o.createdAt BETWEEN :start AND :end")
     Long countOrdersBetweenDates(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
@@ -137,43 +136,19 @@ public interface OrderRepository extends JpaRepository<Order, String> {
     @Query("SELECT COUNT(o) FROM Order o WHERE o.deliveryDate BETWEEN :start AND :end")
     Long countDeliveredBetweenDates(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
 
-    Optional<Order> findByIdAndUserId(String orderId, String userId);
-
-    Optional<Order> findByOrderNumberAndUserId(String orderNumber, String userId);
-
-    @Query("""
-SELECT COUNT(o)
-FROM Order o
-WHERE o.status = :status
-AND o.createdAt BETWEEN :startDate AND :endDate
-""")
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.status = :status AND o.createdAt BETWEEN :startDate AND :endDate")
     Long countOrdersByStatusBetweenDates(
             @Param("status") OrderStatus status,
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate
     );
 
-
-    @Query("""
-SELECT AVG(o.totalPrice)
-FROM Order o
-WHERE o.status = com.inkfront.logisticsApplication.domain.enums.OrderStatus.DELIVERED
-AND o.createdAt BETWEEN :startDate AND :endDate
-""")
+    @Query("SELECT AVG(o.totalPrice) FROM Order o WHERE o.status = 'DELIVERED' AND o.createdAt BETWEEN :startDate AND :endDate")
     Double averageDeliveredOrderValue(
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate
     );
 
-
-    @Query("""
-SELECT COUNT(o)
-FROM Order o
-WHERE o.driver.id = :driverId
-AND o.status = com.inkfront.logisticsApplication.domain.enums.OrderStatus.DELIVERED
-""")
-    Long countDeliveredOrdersByDriver(
-            @Param("driverId") String driverId
-    );
-
+    @Query("SELECT COUNT(o) FROM Order o WHERE o.driver.id = :driverId AND o.status = 'DELIVERED'")
+    Long countDeliveredOrdersByDriver(@Param("driverId") String driverId);
 }

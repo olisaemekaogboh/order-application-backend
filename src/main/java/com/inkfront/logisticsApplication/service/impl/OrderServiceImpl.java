@@ -102,64 +102,61 @@ public class OrderServiceImpl implements OrderService {
         return response;
     }
 
+    // In OrderServiceImpl.java - Fix the createOrder method
+
     @Override
     public OrderResponseDTO createOrder(OrderRequestDTO orderRequest, String userId) {
-
         log.info("Creating order for user: {}", userId);
 
         User user = userRepository.findById(userId)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException(ErrorMessages.USER_NOT_FOUND));
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.USER_NOT_FOUND));
 
+        // Validate distance
         if (orderRequest.getDistanceKm() < AppConstants.MINIMUM_DISTANCE_KM) {
-            throw new BadRequestException(
-                    "Distance must be at least "
-                            + AppConstants.MINIMUM_DISTANCE_KM
-                            + " km");
+            throw new BadRequestException("Distance must be at least " + AppConstants.MINIMUM_DISTANCE_KM + " km");
         }
 
+        // Get pricing configuration
         PricingConfig config = pricingConfigRepository
                 .findByVehicleTypeAndActiveTrue(orderRequest.getVehicleType())
-                .orElseThrow(() ->
-                        new ResourceNotFoundException(
-                                "Pricing configuration not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Pricing configuration not found for vehicle type: " + orderRequest.getVehicleType()));
 
-        PriceCalculationRequestDTO priceRequest =
-                new PriceCalculationRequestDTO();
-
+        // Calculate price
+        PriceCalculationRequestDTO priceRequest = new PriceCalculationRequestDTO();
         priceRequest.setDistanceKm(orderRequest.getDistanceKm());
-        priceRequest.setWeight(orderRequest.getWeight());
-        priceRequest.setVolume(orderRequest.getVolume());
+        priceRequest.setWeight(orderRequest.getWeight() != null ? orderRequest.getWeight() : 0.0);
+        priceRequest.setVolume(orderRequest.getVolume() != null ? orderRequest.getVolume() : 0.0);
         priceRequest.setVehicleType(orderRequest.getVehicleType());
         priceRequest.setExpressDelivery(orderRequest.isExpressDelivery());
 
-        PriceCalculationResponseDTO priceResponse =
-                calculatePrice(priceRequest);
+        PriceCalculationResponseDTO priceResponse = calculatePrice(priceRequest);
 
         Order order = orderMapper.toEntity(orderRequest);
-
         order.setOrderNumber(orderNumberGenerator.generateOrderNumber());
         order.setUser(user);
-
         order.setBasePrice(priceResponse.getBasePrice());
         order.setWeightSurcharge(priceResponse.getWeightSurcharge());
         order.setVolumeSurcharge(priceResponse.getVolumeSurcharge());
         order.setExpressSurcharge(priceResponse.getExpressSurcharge());
         order.setTotalPrice(priceResponse.getTotalPrice());
-
         order.setCurrency(priceResponse.getCurrency());
-
         order.setExpress(orderRequest.isExpressDelivery());
-
         order.setOrderDate(LocalDateTime.now());
+        order.setStatus(OrderStatus.PENDING);
+        order.setPaymentStatus(PaymentStatus.PENDING);
 
-        long estimatedHours =
-                distanceService.estimateTravelTime(
-                        orderRequest.getDistanceKm(),
-                        orderRequest.getVehicleType().name());
+        // Set pickup date
+        if (orderRequest.getPickupDate() != null) {
+            order.setPickupDate(orderRequest.getPickupDate());
+        } else {
+            order.setPickupDate(LocalDateTime.now().plusHours(1));
+        }
 
-        order.setEstimatedDeliveryDate(
-                orderRequest.getPickupDate().plusHours(estimatedHours));
+        // Calculate estimated delivery
+        long estimatedHours = distanceService.estimateTravelTime(
+                orderRequest.getDistanceKm(),
+                orderRequest.getVehicleType().name());
+        order.setEstimatedDeliveryDate(order.getPickupDate().plusHours(estimatedHours));
 
         order = orderRepository.save(order);
 
@@ -170,7 +167,6 @@ public class OrderServiceImpl implements OrderService {
 
         return orderMapper.toDTO(order);
     }
-
     @Override
     public OrderResponseDTO getOrderById(
             String userId,

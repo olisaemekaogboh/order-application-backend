@@ -23,6 +23,8 @@ import com.inkfront.logisticsApplication.util.DateUtils;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -47,7 +49,7 @@ public class RevenueServiceImpl implements RevenueService {
     private final PaymentTransactionRepository paymentTransactionRepository;
     private final RevenueReportMapper revenueReportMapper;
 
-    // ==================== EXISTING METHODS (unchanged) ====================
+    // ==================== EXISTING METHODS ====================
 
     @Override
     public RevenueReportDTO generateRevenueReport(RevenueReportRequestDTO request) {
@@ -81,9 +83,12 @@ public class RevenueServiceImpl implements RevenueService {
         LocalDateTime startDateTime = startDate.atStartOfDay();
         LocalDateTime endDateTime = endDate.atTime(23, 59, 59);
 
-        List<Order> orders = orderRepository.findOrdersBetweenDatesAndStatus(
-                startDateTime, endDateTime, OrderStatus.DELIVERED
+        // FIXED: Use Pageable.unpaged() for all results
+        Pageable pageable = Pageable.unpaged();
+        Page<Order> ordersPage = orderRepository.findOrdersBetweenDatesAndStatus(
+                startDateTime, endDateTime, OrderStatus.DELIVERED, pageable
         );
+        List<Order> orders = ordersPage.getContent();
 
         double totalRevenue = orders.stream()
                 .mapToDouble(Order::getTotalPrice)
@@ -130,7 +135,11 @@ public class RevenueServiceImpl implements RevenueService {
         LocalDateTime startDate = date.atStartOfDay();
         LocalDateTime endDate = date.atTime(23, 59, 59);
 
-        List<Order> orders = orderRepository.findOrdersBetweenDatesAndStatus(startDate, endDate, OrderStatus.DELIVERED);
+        Pageable pageable = Pageable.unpaged();
+        Page<Order> ordersPage = orderRepository.findOrdersBetweenDatesAndStatus(
+                startDate, endDate, OrderStatus.DELIVERED, pageable
+        );
+        List<Order> orders = ordersPage.getContent();
 
         DailyRevenueDTO dailyRevenue = new DailyRevenueDTO();
         dailyRevenue.setDate(date);
@@ -310,7 +319,11 @@ public class RevenueServiceImpl implements RevenueService {
         LocalDateTime startDateTime = startDate.atStartOfDay();
         LocalDateTime endDateTime = endDate.atTime(23, 59, 59);
 
-        List<Order> orders = orderRepository.findOrdersBetweenDatesAndStatus(startDateTime, endDateTime, OrderStatus.DELIVERED);
+        Pageable pageable = Pageable.unpaged();
+        Page<Order> ordersPage = orderRepository.findOrdersBetweenDatesAndStatus(
+                startDateTime, endDateTime, OrderStatus.DELIVERED, pageable
+        );
+        List<Order> orders = ordersPage.getContent();
         Map<String, Double> revenueByState = getRevenueByState(orders);
 
         RevenueReportDTO report = new RevenueReportDTO();
@@ -328,7 +341,11 @@ public class RevenueServiceImpl implements RevenueService {
         LocalDateTime startDateTime = startDate.atStartOfDay();
         LocalDateTime endDateTime = endDate.atTime(23, 59, 59);
 
-        List<Order> orders = orderRepository.findOrdersBetweenDatesAndStatus(startDateTime, endDateTime, OrderStatus.DELIVERED);
+        Pageable pageable = Pageable.unpaged();
+        Page<Order> ordersPage = orderRepository.findOrdersBetweenDatesAndStatus(
+                startDateTime, endDateTime, OrderStatus.DELIVERED, pageable
+        );
+        List<Order> orders = ordersPage.getContent();
         Map<String, Double> revenueByVehicle = getRevenueByVehicleType(orders);
 
         RevenueReportDTO report = new RevenueReportDTO();
@@ -346,7 +363,11 @@ public class RevenueServiceImpl implements RevenueService {
         LocalDateTime startDateTime = startDate.atStartOfDay();
         LocalDateTime endDateTime = endDate.atTime(23, 59, 59);
 
-        List<Order> orders = orderRepository.findOrdersBetweenDatesAndStatus(startDateTime, endDateTime, OrderStatus.DELIVERED);
+        Pageable pageable = Pageable.unpaged();
+        Page<Order> ordersPage = orderRepository.findOrdersBetweenDatesAndStatus(
+                startDateTime, endDateTime, OrderStatus.DELIVERED, pageable
+        );
+        List<Order> orders = ordersPage.getContent();
         Map<String, Double> revenueByPayment = getRevenueByPaymentMethod(orders);
 
         RevenueReportDTO report = new RevenueReportDTO();
@@ -373,8 +394,11 @@ public class RevenueServiceImpl implements RevenueService {
         LocalDateTime startDateTime = startDate.atStartOfDay();
         LocalDateTime endDateTime = endDate.atTime(23, 59, 59);
 
-        List<Order> orders = orderRepository.findOrdersBetweenDatesAndStatus(startDateTime, endDateTime, OrderStatus.DELIVERED);
-        return (long) orders.size();
+        Pageable pageable = Pageable.unpaged();
+        Page<Order> ordersPage = orderRepository.findOrdersBetweenDatesAndStatus(
+                startDateTime, endDateTime, OrderStatus.DELIVERED, pageable
+        );
+        return (long) ordersPage.getContent().size();
     }
 
     @Override
@@ -417,7 +441,6 @@ public class RevenueServiceImpl implements RevenueService {
         LocalDateTime start = request.getStartDate().atStartOfDay();
         LocalDateTime end = request.getEndDate().atTime(23, 59, 59);
 
-        // Fetch all earnings for this driver in the date range
         List<DriverEarning> earnings = driverEarningRepository.findDriverEarningsBetweenDates(
                 request.getDriverId(), start, end);
 
@@ -428,7 +451,6 @@ public class RevenueServiceImpl implements RevenueService {
         double netEarnings = totalEarnings - totalCommission;
         double avgPerDelivery = totalDeliveries > 0 ? totalEarnings / totalDeliveries : 0.0;
 
-        // Daily breakdown
         Map<String, Double> earningsByDay = new LinkedHashMap<>();
         LocalDate current = request.getStartDate();
         while (!current.isAfter(request.getEndDate())) {
@@ -467,7 +489,11 @@ public class RevenueServiceImpl implements RevenueService {
         LocalDateTime start = request.getStartDate().atStartOfDay();
         LocalDateTime end = request.getEndDate().atTime(23, 59, 59);
 
-        List<Order> orders = orderRepository.findOrdersBetweenDatesAndStatus(start, end, OrderStatus.DELIVERED);
+        Pageable pageable = Pageable.unpaged();
+        Page<Order> ordersPage = orderRepository.findOrdersBetweenDatesAndStatus(
+                start, end, OrderStatus.DELIVERED, pageable
+        );
+        List<Order> orders = new ArrayList<>(ordersPage.getContent());
 
         if (request.getPaymentStatus() != null) {
             orders = orders.stream()
@@ -513,7 +539,6 @@ public class RevenueServiceImpl implements RevenueService {
         driverRepository.findById(request.getDriverId())
                 .orElseThrow(() -> new ResourceNotFoundException("Driver not found: " + request.getDriverId()));
 
-        // Use sumUnpaidNetEarnings to get the actual unpaid net amount (after commission)
         Double unpaidEarnings = driverEarningRepository.sumUnpaidNetEarnings(request.getDriverId());
         if (unpaidEarnings == null) unpaidEarnings = 0.0;
 
@@ -521,7 +546,6 @@ public class RevenueServiceImpl implements RevenueService {
             throw new BadRequestException("Insufficient unpaid earnings. Available: " + unpaidEarnings);
         }
 
-        // Get unpaid earnings list using the existing method
         List<DriverEarning> unpaid = driverEarningRepository.findByDriverIdAndPaidFalse(request.getDriverId());
         double remaining = request.getAmount();
         for (DriverEarning earning : unpaid) {
@@ -554,17 +578,17 @@ public class RevenueServiceImpl implements RevenueService {
         LocalDateTime start = request.getStartDate().atStartOfDay();
         LocalDateTime end = request.getEndDate().atTime(23, 59, 59);
 
-        // Total commission
         Double totalCommission = driverEarningRepository.sumAllCommissionsBetweenDates(start, end);
         if (totalCommission == null) totalCommission = 0.0;
 
-        // Total delivered orders in the period
-        List<Order> orders = orderRepository.findOrdersBetweenDatesAndStatus(start, end, OrderStatus.DELIVERED);
-        Long totalOrders = (long) orders.size();
+        Pageable pageable = Pageable.unpaged();
+        Page<Order> ordersPage = orderRepository.findOrdersBetweenDatesAndStatus(
+                start, end, OrderStatus.DELIVERED, pageable
+        );
+        Long totalOrders = (long) ordersPage.getContent().size();
 
         double avgCommission = totalOrders > 0 ? totalCommission / totalOrders : 0.0;
 
-        // Commission by day – we can compute per day using the same repository method
         Map<String, Double> commissionByDay = new LinkedHashMap<>();
         LocalDate current = request.getStartDate();
         while (!current.isAfter(request.getEndDate())) {
@@ -575,9 +599,6 @@ public class RevenueServiceImpl implements RevenueService {
             current = current.plusDays(1);
         }
 
-        // Per‑driver commission breakdown is not directly available from the repository.
-        // We could compute it by querying each driver individually, but that would be expensive.
-        // To avoid modifying the repository, we leave it empty and log a warning.
         log.warn("Per‑driver commission breakdown is not available; returning empty map.");
         Map<String, Double> commissionByDriver = new HashMap<>();
 
@@ -591,13 +612,14 @@ public class RevenueServiceImpl implements RevenueService {
                 .build();
     }
 
-    // ==================== PRIVATE HELPERS (unchanged) ====================
+    // ==================== PRIVATE HELPERS ====================
 
     private Map<String, Double> getRevenueByState(List<Order> orders) {
         return orders.stream()
                 .collect(Collectors.groupingBy(
                         order -> {
                             String location = order.getDeliveryLocation();
+                            if (location == null) return "Unknown";
                             String[] parts = location.split(",");
                             return parts.length >= 2 ? parts[1].trim() : "Unknown";
                         },
@@ -609,7 +631,7 @@ public class RevenueServiceImpl implements RevenueService {
         return orders.stream()
                 .collect(Collectors.groupingBy(
                         order -> order.getDriver() != null && order.getDriver().getVehicleType() != null ?
-                                order.getDriver().getVehicleType().getDisplayName() : "Unknown",
+                                order.getDriver().getVehicleType().toString() : "Unknown",
                         Collectors.summingDouble(Order::getTotalPrice)
                 ));
     }
