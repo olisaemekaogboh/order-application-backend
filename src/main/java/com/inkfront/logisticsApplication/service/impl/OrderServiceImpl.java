@@ -2,6 +2,8 @@ package com.inkfront.logisticsApplication.service.impl;
 
 import com.inkfront.logisticsApplication.domain.entity.*;
 import com.inkfront.logisticsApplication.domain.enums.OrderStatus;
+import com.inkfront.logisticsApplication.domain.enums.PaymentGateway;
+import com.inkfront.logisticsApplication.domain.enums.PaymentMethod;
 import com.inkfront.logisticsApplication.domain.enums.PaymentStatus;
 import com.inkfront.logisticsApplication.dto.request.order.*;
 import com.inkfront.logisticsApplication.dto.response.common.PaginatedResponseDTO;
@@ -16,6 +18,7 @@ import com.inkfront.logisticsApplication.repository.OrderRepository;
 import com.inkfront.logisticsApplication.repository.UserRepository;
 import com.inkfront.logisticsApplication.repository.DriverRepository;
 import com.inkfront.logisticsApplication.repository.PricingConfigRepository;
+import com.inkfront.logisticsApplication.repository.PaymentTransactionRepository;
 import com.inkfront.logisticsApplication.service.interfaces.OrderService;
 import com.inkfront.logisticsApplication.service.interfaces.PricingService;
 import com.inkfront.logisticsApplication.service.interfaces.NotificationService;
@@ -33,8 +36,10 @@ import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -47,6 +52,7 @@ public class OrderServiceImpl implements OrderService {
     private final UserRepository userRepository;
     private final DriverRepository driverRepository;
     private final PricingConfigRepository pricingConfigRepository;
+    private final PaymentTransactionRepository paymentTransactionRepository;
     private final OrderMapper orderMapper;
     private final PriceCalculationMapper priceCalculationMapper;
     private final PricingService pricingService;
@@ -102,63 +108,69 @@ public class OrderServiceImpl implements OrderService {
         return response;
     }
 
-    // In OrderServiceImpl.java - Fix the createOrder method
-
     @Override
     public OrderResponseDTO createOrder(OrderRequestDTO orderRequest, String userId) {
+
         log.info("Creating order for user: {}", userId);
 
         User user = userRepository.findById(userId)
-                .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.USER_NOT_FOUND));
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(ErrorMessages.USER_NOT_FOUND));
 
-        // Validate distance
         if (orderRequest.getDistanceKm() < AppConstants.MINIMUM_DISTANCE_KM) {
-            throw new BadRequestException("Distance must be at least " + AppConstants.MINIMUM_DISTANCE_KM + " km");
+            throw new BadRequestException(
+                    "Distance must be at least "
+                            + AppConstants.MINIMUM_DISTANCE_KM
+                            + " km");
         }
 
-        // Get pricing configuration
         PricingConfig config = pricingConfigRepository
                 .findByVehicleTypeAndActiveTrue(orderRequest.getVehicleType())
-                .orElseThrow(() -> new ResourceNotFoundException("Pricing configuration not found for vehicle type: " + orderRequest.getVehicleType()));
+                .orElseThrow(() ->
+                        new ResourceNotFoundException(
+                                "Pricing configuration not found"));
 
-        // Calculate price
-        PriceCalculationRequestDTO priceRequest = new PriceCalculationRequestDTO();
+        PriceCalculationRequestDTO priceRequest =
+                new PriceCalculationRequestDTO();
+
         priceRequest.setDistanceKm(orderRequest.getDistanceKm());
-        priceRequest.setWeight(orderRequest.getWeight() != null ? orderRequest.getWeight() : 0.0);
-        priceRequest.setVolume(orderRequest.getVolume() != null ? orderRequest.getVolume() : 0.0);
+        priceRequest.setWeight(orderRequest.getWeight());
+        priceRequest.setVolume(orderRequest.getVolume());
         priceRequest.setVehicleType(orderRequest.getVehicleType());
         priceRequest.setExpressDelivery(orderRequest.isExpressDelivery());
 
-        PriceCalculationResponseDTO priceResponse = calculatePrice(priceRequest);
+        PriceCalculationResponseDTO priceResponse =
+                calculatePrice(priceRequest);
 
         Order order = orderMapper.toEntity(orderRequest);
+
         order.setOrderNumber(orderNumberGenerator.generateOrderNumber());
         order.setUser(user);
+
         order.setBasePrice(priceResponse.getBasePrice());
         order.setWeightSurcharge(priceResponse.getWeightSurcharge());
         order.setVolumeSurcharge(priceResponse.getVolumeSurcharge());
         order.setExpressSurcharge(priceResponse.getExpressSurcharge());
         order.setTotalPrice(priceResponse.getTotalPrice());
+
         order.setCurrency(priceResponse.getCurrency());
+
         order.setExpress(orderRequest.isExpressDelivery());
+
         order.setOrderDate(LocalDateTime.now());
-        order.setStatus(OrderStatus.PENDING);
-        order.setPaymentStatus(PaymentStatus.PENDING);
 
-        // Set pickup date
-        if (orderRequest.getPickupDate() != null) {
-            order.setPickupDate(orderRequest.getPickupDate());
-        } else {
-            order.setPickupDate(LocalDateTime.now().plusHours(1));
-        }
+        long estimatedHours =
+                distanceService.estimateTravelTime(
+                        orderRequest.getDistanceKm(),
+                        orderRequest.getVehicleType().name());
 
-        // Calculate estimated delivery
-        long estimatedHours = distanceService.estimateTravelTime(
-                orderRequest.getDistanceKm(),
-                orderRequest.getVehicleType().name());
-        order.setEstimatedDeliveryDate(order.getPickupDate().plusHours(estimatedHours));
+        order.setEstimatedDeliveryDate(
+                orderRequest.getPickupDate().plusHours(estimatedHours));
 
         order = orderRepository.save(order);
+
+        // ===== CREATE PAYMENT RECORD FOR THE ORDER =====
+        createPaymentForOrder(order, user);
 
         notificationService.sendOrderUpdateNotification(
                 userId,
@@ -167,6 +179,53 @@ public class OrderServiceImpl implements OrderService {
 
         return orderMapper.toDTO(order);
     }
+
+    // ===== Helper method to create payment for order =====
+    private void createPaymentForOrder(Order order, User user) {
+        try {
+            PaymentTransaction payment = new PaymentTransaction();
+            payment.setOrder(order);
+            payment.setUser(user);
+            payment.setAmount(BigDecimal.valueOf(order.getTotalPrice()));
+            payment.setCurrency(order.getCurrency() != null ? order.getCurrency() : "NGN");
+            payment.setStatus(PaymentStatus.PENDING);
+            payment.setTransactionReference(generateTransactionReference());
+
+            // Set required fields with default values
+            payment.setPaymentMethod(PaymentMethod.CARD); // Set a default payment method
+            payment.setGateway(PaymentGateway.PAYSTACK); // Set a default gateway
+
+            payment.setRefundedAmount(BigDecimal.ZERO);
+            payment.setProcessingFee(BigDecimal.ZERO);
+            payment.setGatewayFee(BigDecimal.ZERO);
+            payment.setRetryCount(0);
+            payment.setMaxRetries(3);
+            payment.setCreatedAt(LocalDateTime.now());
+            payment.setUpdatedAt(LocalDateTime.now());
+            payment.setVersion(0L);
+
+            // Set customer info if available
+            if (user != null) {
+                payment.setCustomerEmail(user.getEmail());
+                payment.setCustomerName(user.getFirstName() + " " + user.getLastName());
+                payment.setCustomerPhone(user.getPhoneNumber());
+            }
+
+            paymentTransactionRepository.save(payment);
+            log.info("Created payment record for order: {} with reference: {}",
+                    order.getOrderNumber(), payment.getTransactionReference());
+        } catch (Exception e) {
+            log.error("Failed to create payment for order {}: {}", order.getOrderNumber(), e.getMessage(), e);
+        }
+    }
+
+    // ===== Helper method to generate transaction reference =====
+    private String generateTransactionReference() {
+        return "TXN-" + System.currentTimeMillis() + "-" + UUID.randomUUID().toString().substring(0, 8).toUpperCase();
+    }
+
+
+
     @Override
     public OrderResponseDTO getOrderById(
             String userId,
@@ -466,10 +525,18 @@ public class OrderServiceImpl implements OrderService {
 
         order.setPaymentStatus(status);
 
-        // Optionally set transaction reference if present
-        if (request.getTransactionReference() != null) {
-            // You might have a field for transaction reference; if not, it's ignored.
-            // Future enhancement: store reference.
+        // Update the payment transaction if exists
+        try {
+            paymentTransactionRepository.findByOrderId(orderId).ifPresent(payment -> {
+                payment.setStatus(status);
+                if (status == PaymentStatus.PAID) {
+                    payment.setPaymentDate(LocalDateTime.now());
+                }
+                paymentTransactionRepository.save(payment);
+                log.info("Updated payment status for order {} to {}", orderId, status);
+            });
+        } catch (Exception e) {
+            log.error("Failed to update payment transaction for order {}: {}", orderId, e.getMessage());
         }
 
         orderRepository.save(order);
@@ -497,27 +564,9 @@ public class OrderServiceImpl implements OrderService {
                         new ResourceNotFoundException(
                                 ErrorMessages.ORDER_NOT_FOUND));
 
-        // For now, we update a hypothetical location field.
-        // If you have separate tracking entity, you would create it here.
-        // This example assumes we store current location in the order (as we did in driver).
-        // Since the prompt doesn't mention order location fields, we can either store in a separate table
-        // or ignore. We'll just log and return the order as-is.
-        // But to follow the pattern, we might add a location field to Order or create tracking history.
-        // Since the prompt says "do not change entities", we can't add fields.
-        // So we'll simply return the existing order DTO. However, the prompt expects to return OrderDTO.
-        // For now, we just log and return the unchanged order.
-        // We could also create a new tracking event entity if available.
-
-        // Simulate updating location (if we had fields):
-        // order.setCurrentLatitude(request.getLatitude());
-        // order.setCurrentLongitude(request.getLongitude());
-        // order.setCurrentLocation(request.getLocation());
-
         // We'll just log the new coordinates
         log.debug("New tracking coordinates: lat={}, lon={}, location={}",
                 request.getLatitude(), request.getLongitude(), request.getLocation());
-
-        // You might want to persist tracking history; but that's out of scope.
 
         // Return the order DTO (unchanged)
         return orderMapper.toDTO(order);
