@@ -87,7 +87,8 @@ public class VehicleServiceImpl implements VehicleService {
             vehicleValidator.validateUniqueVin(request.getVin());
         }
 
-        // Update fields manually or use mapper (but we need to preserve status and relationships)
+        // Update ALL fields including status
+        vehicle.setVehicleNumber(request.getVehicleNumber());
         vehicle.setRegistrationNumber(request.getRegistrationNumber());
         vehicle.setPlateNumber(request.getPlateNumber());
         vehicle.setVin(request.getVin());
@@ -111,7 +112,23 @@ public class VehicleServiceImpl implements VehicleService {
         vehicle.setRoadWorthinessExpiry(request.getRoadWorthinessExpiry());
         vehicle.setLicenseExpiry(request.getLicenseExpiry());
 
+        // ✅ Update status if provided in the request
+        if (request.getStatus() != null) {
+            VehicleStatus newStatus = request.getStatus();
+            // Validate transition
+            if (vehicle.getStatus() == VehicleStatus.RETIRED && newStatus != VehicleStatus.RETIRED) {
+                throw new IllegalStateException("Cannot change status of a retired vehicle");
+            }
+            vehicle.setStatus(newStatus);
+            log.info("Vehicle status updated to: {}", newStatus);
+        }
+
+        // Save the vehicle
         vehicle = vehicleRepository.save(vehicle);
+        vehicleRepository.flush();
+
+        log.info("Vehicle updated successfully: ID={}, Brand={}, Model={}, Status={}",
+                vehicle.getId(), vehicle.getBrand(), vehicle.getModel(), vehicle.getStatus());
 
         auditService.logAction(userId, "VEHICLE_UPDATED", "Vehicle", vehicle.getId(),
                 "Updated vehicle " + vehicle.getVehicleNumber());
@@ -137,18 +154,11 @@ public class VehicleServiceImpl implements VehicleService {
         Pageable pageable = PageRequest.of(filter.getPage(), filter.getSize(),
                 Sort.by(Sort.Direction.fromString(filter.getSortDirection()), filter.getSortBy()));
 
-        Page<Vehicle> page;
+        Page<Vehicle> page = vehicleRepository.findAll(pageable);
 
-        // Build dynamic query – can be enhanced with Specifications
-        if (StringUtils.hasText(filter.getKeyword())) {
-            // Search by keyword across multiple fields (simplified)
-            page = vehicleRepository.findAll(pageable); // placeholder – implement custom query
-        } else {
-            page = vehicleRepository.findAll(pageable);
-        }
-
-        // Apply filters in memory (simplified; better to use Specifications)
+        // Apply filters
         List<Vehicle> filtered = page.getContent().stream()
+                .filter(v -> !v.isDeleted())
                 .filter(v -> filter.getStatus() == null || v.getStatus() == filter.getStatus())
                 .filter(v -> filter.getVehicleType() == null || v.getVehicleType() == filter.getVehicleType())
                 .filter(v -> filter.getBrand() == null || v.getBrand().equalsIgnoreCase(filter.getBrand()))
@@ -208,13 +218,16 @@ public class VehicleServiceImpl implements VehicleService {
         Vehicle vehicle = findVehicle(vehicleId);
         VehicleStatus newStatus = VehicleStatus.valueOf(status.toUpperCase());
 
-        // Validate transition (simplified)
+        // Validate transition
         if (vehicle.getStatus() == VehicleStatus.RETIRED) {
             throw new IllegalStateException("Cannot change status of a retired vehicle");
         }
 
         vehicle.setStatus(newStatus);
         vehicle = vehicleRepository.save(vehicle);
+        vehicleRepository.flush();
+
+        log.info("Vehicle status updated: ID={}, Status={}", vehicle.getId(), vehicle.getStatus());
 
         auditService.logAction(userId, "VEHICLE_STATUS_CHANGED", "Vehicle", vehicle.getId(),
                 "Changed status to " + newStatus + " for vehicle " + vehicle.getVehicleNumber());

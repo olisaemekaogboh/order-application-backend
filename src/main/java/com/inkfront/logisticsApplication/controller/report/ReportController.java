@@ -1,6 +1,7 @@
 package com.inkfront.logisticsApplication.controller.report;
 
 import com.inkfront.logisticsApplication.domain.constants.SuccessMessages;
+import com.inkfront.logisticsApplication.domain.enums.ReportFormat;
 import com.inkfront.logisticsApplication.dto.request.report.*;
 import com.inkfront.logisticsApplication.dto.response.common.ApiResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.report.*;
@@ -39,6 +40,46 @@ public class ReportController {
     public ResponseEntity<ApiResponseDTO<RevenueReportDTO>> generateRevenueReport(
             @Valid @RequestBody RevenueReportRequestDTO request) {
         log.info("Generating revenue report from {} to {}", request.getStartDate(), request.getEndDate());
+        RevenueReportDTO report = reportService.generateRevenueReport(request);
+        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, report));
+    }
+
+    @GetMapping("/revenue")
+    @Operation(summary = "Get Revenue Report with query parameters")
+    public ResponseEntity<ApiResponseDTO<RevenueReportDTO>> getRevenueReport(
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate startDate,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate endDate,
+            @RequestParam(required = false) String status,
+            @RequestParam(required = false) String driverId,
+            @RequestParam(required = false) String customerId,
+            @RequestParam(required = false) String vehicleType,
+            @RequestParam(required = false) String paymentStatus,
+            @RequestParam(defaultValue = "PDF") ReportFormat reportFormat,
+            @RequestParam(defaultValue = "false") boolean includeCharts,
+            @RequestParam(defaultValue = "true") boolean includeSummary) {
+
+        log.info("Getting revenue report from {} to {}", startDate, endDate);
+
+        if (startDate == null) {
+            startDate = LocalDate.now().minusDays(30);
+        }
+        if (endDate == null) {
+            endDate = LocalDate.now();
+        }
+
+        RevenueReportRequestDTO request = RevenueReportRequestDTO.builder()
+                .startDate(startDate)
+                .endDate(endDate)
+                .status(status)
+                .driverId(driverId)
+                .customerId(customerId)
+                .vehicleType(vehicleType)
+                .paymentStatus(paymentStatus)
+                .reportFormat(reportFormat)
+                .includeCharts(includeCharts)
+                .includeSummary(includeSummary)
+                .build();
+
         RevenueReportDTO report = reportService.generateRevenueReport(request);
         return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, report));
     }
@@ -88,11 +129,13 @@ public class ReportController {
     }
 
     // ==================== DOWNLOAD ENDPOINTS ====================
+    // NOTE: These endpoints return Resource directly, NOT ApiResponseDTO
 
-    // Revenue
+    // Revenue Downloads
     @PostMapping("/revenue/pdf")
     @Operation(summary = "Download Revenue Report as PDF")
     public ResponseEntity<Resource> downloadRevenuePdf(@Valid @RequestBody RevenueReportRequestDTO request) {
+        log.info("Downloading revenue report as PDF");
         Resource resource = reportService.exportRevenueReportToPdf(request);
         return buildPdfResponse(resource, "Revenue_Report", request.getStartDate(), request.getEndDate());
     }
@@ -100,6 +143,7 @@ public class ReportController {
     @PostMapping("/revenue/excel")
     @Operation(summary = "Download Revenue Report as Excel")
     public ResponseEntity<Resource> downloadRevenueExcel(@Valid @RequestBody RevenueReportRequestDTO request) {
+        log.info("Downloading revenue report as Excel");
         Resource resource = reportService.exportRevenueReportToExcel(request);
         return buildExcelResponse(resource, "Revenue_Report", request.getStartDate(), request.getEndDate());
     }
@@ -107,14 +151,16 @@ public class ReportController {
     @PostMapping("/revenue/csv")
     @Operation(summary = "Download Revenue Report as CSV")
     public ResponseEntity<Resource> downloadRevenueCsv(@Valid @RequestBody RevenueReportRequestDTO request) {
+        log.info("Downloading revenue report as CSV");
         Resource resource = reportService.exportRevenueReportToCsv(request);
         return buildCsvResponse(resource, "Revenue_Report", request.getStartDate(), request.getEndDate());
     }
 
-    // Orders
+    // Orders Downloads
     @PostMapping("/orders/pdf")
     @Operation(summary = "Download Order Report as PDF")
     public ResponseEntity<Resource> downloadOrdersPdf(@Valid @RequestBody OrderReportRequestDTO request) {
+        log.info("Downloading order report as PDF");
         Resource resource = reportService.exportOrderReportToPdf(request);
         return buildPdfResponse(resource, "Orders_Report", request.getStartDate(), request.getEndDate());
     }
@@ -122,6 +168,7 @@ public class ReportController {
     @PostMapping("/orders/excel")
     @Operation(summary = "Download Order Report as Excel")
     public ResponseEntity<Resource> downloadOrdersExcel(@Valid @RequestBody OrderReportRequestDTO request) {
+        log.info("Downloading order report as Excel");
         Resource resource = reportService.exportOrderReportToExcel(request);
         return buildExcelResponse(resource, "Orders_Report", request.getStartDate(), request.getEndDate());
     }
@@ -129,14 +176,16 @@ public class ReportController {
     @PostMapping("/orders/csv")
     @Operation(summary = "Download Order Report as CSV")
     public ResponseEntity<Resource> downloadOrdersCsv(@Valid @RequestBody OrderReportRequestDTO request) {
+        log.info("Downloading order report as CSV");
         Resource resource = reportService.exportOrderReportToCsv(request);
         return buildCsvResponse(resource, "Orders_Report", request.getStartDate(), request.getEndDate());
     }
 
-    // Drivers
+    // Drivers Downloads
     @PostMapping("/drivers/pdf")
     @Operation(summary = "Download Driver Report as PDF")
     public ResponseEntity<Resource> downloadDriversPdf(@Valid @RequestBody DriverReportRequestDTO request) {
+        log.info("Downloading driver report as PDF");
         Resource resource = reportService.exportDriverReportToPdf(request);
         return buildPdfResponse(resource, "Drivers_Report", request.getStartDate(), request.getEndDate());
     }
@@ -144,6 +193,7 @@ public class ReportController {
     @PostMapping("/drivers/excel")
     @Operation(summary = "Download Driver Report as Excel")
     public ResponseEntity<Resource> downloadDriversExcel(@Valid @RequestBody DriverReportRequestDTO request) {
+        log.info("Downloading driver report as Excel");
         Resource resource = reportService.exportDriverReportToExcel(request);
         return buildExcelResponse(resource, "Drivers_Report", request.getStartDate(), request.getEndDate());
     }
@@ -151,14 +201,16 @@ public class ReportController {
     @PostMapping("/drivers/csv")
     @Operation(summary = "Download Driver Report as CSV")
     public ResponseEntity<Resource> downloadDriversCsv(@Valid @RequestBody DriverReportRequestDTO request) {
+        log.info("Downloading driver report as CSV");
         Resource resource = reportService.exportDriverReportToCsv(request);
         return buildCsvResponse(resource, "Drivers_Report", request.getStartDate(), request.getEndDate());
     }
 
-    // Customers
+    // Customers Downloads
     @PostMapping("/customers/pdf")
     @Operation(summary = "Download Customer Report as PDF")
     public ResponseEntity<Resource> downloadCustomersPdf(@Valid @RequestBody CustomerReportRequestDTO request) {
+        log.info("Downloading customer report as PDF");
         Resource resource = reportService.exportCustomerReportToPdf(request);
         return buildPdfResponse(resource, "Customers_Report", request.getStartDate(), request.getEndDate());
     }
@@ -166,6 +218,7 @@ public class ReportController {
     @PostMapping("/customers/excel")
     @Operation(summary = "Download Customer Report as Excel")
     public ResponseEntity<Resource> downloadCustomersExcel(@Valid @RequestBody CustomerReportRequestDTO request) {
+        log.info("Downloading customer report as Excel");
         Resource resource = reportService.exportCustomerReportToExcel(request);
         return buildExcelResponse(resource, "Customers_Report", request.getStartDate(), request.getEndDate());
     }
@@ -173,6 +226,7 @@ public class ReportController {
     @PostMapping("/customers/csv")
     @Operation(summary = "Download Customer Report as CSV")
     public ResponseEntity<Resource> downloadCustomersCsv(@Valid @RequestBody CustomerReportRequestDTO request) {
+        log.info("Downloading customer report as CSV");
         Resource resource = reportService.exportCustomerReportToCsv(request);
         return buildCsvResponse(resource, "Customers_Report", request.getStartDate(), request.getEndDate());
     }

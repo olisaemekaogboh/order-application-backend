@@ -3,6 +3,7 @@ package com.inkfront.logisticsApplication.dto.request.vehicle;
 import com.inkfront.logisticsApplication.domain.enums.FuelType;
 import com.inkfront.logisticsApplication.domain.enums.TransmissionType;
 import com.inkfront.logisticsApplication.domain.enums.VehicleType;
+import com.inkfront.logisticsApplication.domain.enums.VehicleStatus;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Positive;
@@ -58,4 +59,7 @@ public class VehicleRequestDTO {
     private LocalDate insuranceExpiry;
     private LocalDate roadWorthinessExpiry;
     private LocalDate licenseExpiry;
+
+    // ✅ Status field - allows updating status through the full update endpoint
+    private VehicleStatus status;
 }

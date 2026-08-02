@@ -141,5 +141,39 @@ public interface OrderRepository extends JpaRepository<Order, String> {
 
     Optional<Order> findByOrderNumberAndUserId(String orderNumber, String userId);
 
+    @Query("""
+SELECT COUNT(o)
+FROM Order o
+WHERE o.status = :status
+AND o.createdAt BETWEEN :startDate AND :endDate
+""")
+    Long countOrdersByStatusBetweenDates(
+            @Param("status") OrderStatus status,
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate
+    );
+
+
+    @Query("""
+SELECT AVG(o.totalPrice)
+FROM Order o
+WHERE o.status = com.inkfront.logisticsApplication.domain.enums.OrderStatus.DELIVERED
+AND o.createdAt BETWEEN :startDate AND :endDate
+""")
+    Double averageDeliveredOrderValue(
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate
+    );
+
+
+    @Query("""
+SELECT COUNT(o)
+FROM Order o
+WHERE o.driver.id = :driverId
+AND o.status = com.inkfront.logisticsApplication.domain.enums.OrderStatus.DELIVERED
+""")
+    Long countDeliveredOrdersByDriver(
+            @Param("driverId") String driverId
+    );
 
 }

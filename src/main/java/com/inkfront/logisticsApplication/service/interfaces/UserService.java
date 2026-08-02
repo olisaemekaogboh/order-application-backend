@@ -6,6 +6,8 @@ import com.inkfront.logisticsApplication.dto.request.user.UserRoleUpdateRequestD
 import com.inkfront.logisticsApplication.dto.request.user.UserStatusUpdateRequestDTO;
 import com.inkfront.logisticsApplication.dto.response.common.PaginatedResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.user.UserDTO;
+import com.inkfront.logisticsApplication.dto.response.user.UserStatsDTO;
+import org.springframework.core.io.Resource;
 
 import java.util.List;
 
@@ -30,6 +32,9 @@ public interface UserService {
 
     PaginatedResponseDTO<UserDTO> getUsersByRole(String role, int page, int size);
 
+    // New method for searching users
+    PaginatedResponseDTO<UserDTO> searchUsers(String search, int page, int size);
+
     List<UserDTO> getRecentUsers(int limit);
 
     long countTotalUsers();
@@ -42,4 +47,10 @@ public interface UserService {
     UserDTO changePassword(String userId, ChangePasswordRequestDTO request);
 
     void updateProfilePicture(String userId, String profilePictureUrl);
+
+    // New method for user statistics
+    UserStatsDTO getUserStats();
+
+    // New method for exporting users
+    Resource exportUsers(String format);
 }

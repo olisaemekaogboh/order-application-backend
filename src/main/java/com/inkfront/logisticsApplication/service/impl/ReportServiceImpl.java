@@ -43,14 +43,35 @@ public class ReportServiceImpl implements ReportService {
     private final CsvReportExporter csvExporter;
     private final ReportUtils reportUtils;
 
+    // ==================== HELPER: Get default dates ====================
+
+    private LocalDate getDefaultStartDate() {
+        return LocalDate.now().minusDays(30);
+    }
+
+    private LocalDate getDefaultEndDate() {
+        return LocalDate.now();
+    }
+
+    private LocalDate getStartDate(LocalDate startDate) {
+        return startDate != null ? startDate : getDefaultStartDate();
+    }
+
+    private LocalDate getEndDate(LocalDate endDate) {
+        return endDate != null ? endDate : getDefaultEndDate();
+    }
+
     // ==================== REVENUE REPORT ====================
 
     @Override
     public RevenueReportDTO generateRevenueReport(RevenueReportRequestDTO request) {
-        log.info("Generating revenue report from {} to {}", request.getStartDate(), request.getEndDate());
+        LocalDate startDate = getStartDate(request.getStartDate());
+        LocalDate endDate = getEndDate(request.getEndDate());
 
-        LocalDateTime start = request.getStartDate().atStartOfDay();
-        LocalDateTime end = request.getEndDate().atTime(23, 59, 59);
+        log.info("Generating revenue report from {} to {}", startDate, endDate);
+
+        LocalDateTime start = startDate.atStartOfDay();
+        LocalDateTime end = endDate.atTime(23, 59, 59);
 
         List<Order> orders = orderRepository.findOrdersBetweenDates(start, end);
         List<Order> completed = orders.stream()
@@ -59,9 +80,9 @@ public class ReportServiceImpl implements ReportService {
 
         double currentRevenue = completed.stream().mapToDouble(Order::getTotalPrice).sum();
 
-        long days = reportUtils.getDaysBetween(request.getStartDate(), request.getEndDate());
-        LocalDate prevStart = request.getStartDate().minusDays(days);
-        LocalDate prevEnd = request.getEndDate().minusDays(days);
+        long days = reportUtils.getDaysBetween(startDate, endDate);
+        LocalDate prevStart = startDate.minusDays(days);
+        LocalDate prevEnd = endDate.minusDays(days);
         List<Order> prevOrders = orderRepository.findOrdersBetweenDates(prevStart.atStartOfDay(), prevEnd.atTime(23, 59, 59));
         double previousRevenue = prevOrders.stream()
                 .filter(o -> o.getStatus() == OrderStatus.DELIVERED)
@@ -102,8 +123,8 @@ public class ReportServiceImpl implements ReportService {
 
         ReportSummaryDTO summary = ReportSummaryDTO.builder()
                 .title("Revenue Report")
-                .startDate(request.getStartDate())
-                .endDate(request.getEndDate())
+                .startDate(startDate)
+                .endDate(endDate)
                 .generatedBy(getCurrentUsername())
                 .generatedAt(LocalDate.now())
                 .build();
@@ -130,10 +151,13 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     public OrderReportDTO generateOrderReport(OrderReportRequestDTO request) {
-        log.info("Generating order report from {} to {}", request.getStartDate(), request.getEndDate());
+        LocalDate startDate = getStartDate(request.getStartDate());
+        LocalDate endDate = getEndDate(request.getEndDate());
 
-        LocalDateTime start = request.getStartDate().atStartOfDay();
-        LocalDateTime end = request.getEndDate().atTime(23, 59, 59);
+        log.info("Generating order report from {} to {}", startDate, endDate);
+
+        LocalDateTime start = startDate.atStartOfDay();
+        LocalDateTime end = endDate.atTime(23, 59, 59);
 
         List<Order> orders = orderRepository.findOrdersBetweenDates(start, end);
 
@@ -155,7 +179,6 @@ public class ReportServiceImpl implements ReportService {
                 .mapToDouble(Order::getDistanceKm)
                 .average().orElse(0.0);
 
-        // Most requested vehicle type – from driver
         String mostRequested = orders.stream()
                 .filter(o -> o.getDriver() != null && o.getDriver().getVehicleType() != null)
                 .collect(Collectors.groupingBy(
@@ -188,8 +211,8 @@ public class ReportServiceImpl implements ReportService {
 
         ReportSummaryDTO summary = ReportSummaryDTO.builder()
                 .title("Order Report")
-                .startDate(request.getStartDate())
-                .endDate(request.getEndDate())
+                .startDate(startDate)
+                .endDate(endDate)
                 .generatedBy(getCurrentUsername())
                 .generatedAt(LocalDate.now())
                 .build();
@@ -216,7 +239,10 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     public DriverReportDTO generateDriverReport(DriverReportRequestDTO request) {
-        log.info("Generating driver report from {} to {}", request.getStartDate(), request.getEndDate());
+        LocalDate startDate = getStartDate(request.getStartDate());
+        LocalDate endDate = getEndDate(request.getEndDate());
+
+        log.info("Generating driver report from {} to {}", startDate, endDate);
 
         List<Driver> drivers = driverRepository.findAll();
         long total = drivers.size();
@@ -224,9 +250,7 @@ public class ReportServiceImpl implements ReportService {
         long busy = drivers.stream().filter(d -> !d.getAvailable() && d.getVerified()).count();
         long offline = total - available - busy;
 
-        // Completed deliveries per driver
         Map<String, Long> deliveriesByDriver = new HashMap<>();
-        // Total distance covered per driver
         Map<String, Double> distanceByDriver = new HashMap<>();
 
         for (Driver driver : drivers) {
@@ -237,7 +261,6 @@ public class ReportServiceImpl implements ReportService {
             long count = driverOrders.size();
             deliveriesByDriver.put(driver.getId(), count);
 
-            // Sum distance from orders
             double totalDist = driverOrders.stream()
                     .filter(o -> o.getDistanceKm() != null)
                     .mapToDouble(Order::getDistanceKm)
@@ -253,7 +276,6 @@ public class ReportServiceImpl implements ReportService {
                 .mapToDouble(Driver::getRating)
                 .average().orElse(0.0);
 
-        // Revenue generated per driver
         double revenueGenerated = 0.0;
         for (Driver driver : drivers) {
             List<Order> driverOrders = orderRepository.findByDriverIdAndStatusIn(
@@ -266,8 +288,8 @@ public class ReportServiceImpl implements ReportService {
 
         ReportSummaryDTO summary = ReportSummaryDTO.builder()
                 .title("Driver Report")
-                .startDate(request.getStartDate())
-                .endDate(request.getEndDate())
+                .startDate(startDate)
+                .endDate(endDate)
                 .generatedBy(getCurrentUsername())
                 .generatedAt(LocalDate.now())
                 .build();
@@ -293,13 +315,16 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     public CustomerReportDTO generateCustomerReport(CustomerReportRequestDTO request) {
-        log.info("Generating customer report from {} to {}", request.getStartDate(), request.getEndDate());
+        LocalDate startDate = getStartDate(request.getStartDate());
+        LocalDate endDate = getEndDate(request.getEndDate());
+
+        log.info("Generating customer report from {} to {}", startDate, endDate);
 
         List<User> users = userRepository.findByRole(UserRole.CLIENT);
 
         long total = users.size();
-        LocalDateTime start = request.getStartDate().atStartOfDay();
-        LocalDateTime end = request.getEndDate().atTime(23, 59, 59);
+        LocalDateTime start = startDate.atStartOfDay();
+        LocalDateTime end = endDate.atTime(23, 59, 59);
         long newCustomers = users.stream()
                 .filter(u -> u.getCreatedAt() != null && !u.getCreatedAt().isBefore(start) && !u.getCreatedAt().isAfter(end))
                 .count();
@@ -340,8 +365,8 @@ public class ReportServiceImpl implements ReportService {
 
         ReportSummaryDTO summary = ReportSummaryDTO.builder()
                 .title("Customer Report")
-                .startDate(request.getStartDate())
-                .endDate(request.getEndDate())
+                .startDate(startDate)
+                .endDate(endDate)
                 .generatedBy(getCurrentUsername())
                 .generatedAt(LocalDate.now())
                 .build();
@@ -365,10 +390,13 @@ public class ReportServiceImpl implements ReportService {
 
     @Override
     public DeliveryPerformanceReportDTO generateDeliveryReport(DeliveryReportRequestDTO request) {
-        log.info("Generating delivery performance report from {} to {}", request.getStartDate(), request.getEndDate());
+        LocalDate startDate = getStartDate(request.getStartDate());
+        LocalDate endDate = getEndDate(request.getEndDate());
 
-        LocalDateTime start = request.getStartDate().atStartOfDay();
-        LocalDateTime end = request.getEndDate().atTime(23, 59, 59);
+        log.info("Generating delivery performance report from {} to {}", startDate, endDate);
+
+        LocalDateTime start = startDate.atStartOfDay();
+        LocalDateTime end = endDate.atTime(23, 59, 59);
 
         List<Order> orders = orderRepository.findOrdersBetweenDates(start, end)
                 .stream()
@@ -379,8 +407,8 @@ public class ReportServiceImpl implements ReportService {
             return DeliveryPerformanceReportDTO.builder()
                     .summary(ReportSummaryDTO.builder()
                             .title("Delivery Performance Report")
-                            .startDate(request.getStartDate())
-                            .endDate(request.getEndDate())
+                            .startDate(startDate)
+                            .endDate(endDate)
                             .generatedBy(getCurrentUsername())
                             .generatedAt(LocalDate.now())
                             .build())
@@ -444,8 +472,8 @@ public class ReportServiceImpl implements ReportService {
 
         ReportSummaryDTO summary = ReportSummaryDTO.builder()
                 .title("Delivery Performance Report")
-                .startDate(request.getStartDate())
-                .endDate(request.getEndDate())
+                .startDate(startDate)
+                .endDate(endDate)
                 .generatedBy(getCurrentUsername())
                 .generatedAt(LocalDate.now())
                 .build();
@@ -502,75 +530,88 @@ public class ReportServiceImpl implements ReportService {
     }
 
     // ==================== EXPORT METHODS ====================
+    // ✅ FIXED: Now using the exporter classes
 
     @Override
     public Resource exportRevenueReportToPdf(RevenueReportRequestDTO request) {
+        log.info("Exporting revenue report to PDF using PdfReportExporter");
         RevenueReportDTO report = generateRevenueReport(request);
         return pdfExporter.exportRevenueReport(report);
     }
 
     @Override
     public Resource exportRevenueReportToExcel(RevenueReportRequestDTO request) {
+        log.info("Exporting revenue report to Excel using ExcelReportExporter");
         RevenueReportDTO report = generateRevenueReport(request);
         return excelExporter.exportRevenueReport(report);
     }
 
     @Override
     public Resource exportRevenueReportToCsv(RevenueReportRequestDTO request) {
+        log.info("Exporting revenue report to CSV using CsvReportExporter");
         RevenueReportDTO report = generateRevenueReport(request);
         return csvExporter.exportRevenueReport(report);
     }
 
     @Override
     public Resource exportOrderReportToPdf(OrderReportRequestDTO request) {
+        log.info("Exporting order report to PDF using PdfReportExporter");
         OrderReportDTO report = generateOrderReport(request);
         return pdfExporter.exportOrderReport(report);
     }
 
     @Override
     public Resource exportOrderReportToExcel(OrderReportRequestDTO request) {
+        log.info("Exporting order report to Excel using ExcelReportExporter");
         OrderReportDTO report = generateOrderReport(request);
         return excelExporter.exportOrderReport(report);
     }
 
     @Override
     public Resource exportOrderReportToCsv(OrderReportRequestDTO request) {
+        log.info("Exporting order report to CSV using CsvReportExporter");
         OrderReportDTO report = generateOrderReport(request);
         return csvExporter.exportOrderReport(report);
     }
 
     @Override
     public Resource exportDriverReportToPdf(DriverReportRequestDTO request) {
+        log.info("Exporting driver report to PDF using PdfReportExporter");
         DriverReportDTO report = generateDriverReport(request);
         return pdfExporter.exportDriverReport(report);
     }
 
     @Override
     public Resource exportDriverReportToExcel(DriverReportRequestDTO request) {
+        log.info("Exporting driver report to Excel using ExcelReportExporter");
         DriverReportDTO report = generateDriverReport(request);
         return excelExporter.exportDriverReport(report);
     }
 
     @Override
     public Resource exportDriverReportToCsv(DriverReportRequestDTO request) {
+        log.info("Exporting driver report to CSV using CsvReportExporter");
         DriverReportDTO report = generateDriverReport(request);
         return csvExporter.exportDriverReport(report);
     }
 
     @Override
     public Resource exportCustomerReportToPdf(CustomerReportRequestDTO request) {
+        log.info("Exporting customer report to PDF using PdfReportExporter");
         CustomerReportDTO report = generateCustomerReport(request);
         return pdfExporter.exportCustomerReport(report);
     }
 
     @Override
     public Resource exportCustomerReportToExcel(CustomerReportRequestDTO request) {
+        log.info("Exporting customer report to Excel using ExcelReportExporter");
         CustomerReportDTO report = generateCustomerReport(request);
         return excelExporter.exportCustomerReport(report);
     }
 
     @Override
     public Resource exportCustomerReportToCsv(CustomerReportRequestDTO request) {
+        log.info("Exporting customer report to CSV using CsvReportExporter");
         CustomerReportDTO report = generateCustomerReport(request);
         return csvExporter.exportCustomerReport(report);
     }

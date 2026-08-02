@@ -8,6 +8,7 @@ import com.inkfront.logisticsApplication.dto.request.user.UserRoleUpdateRequestD
 import com.inkfront.logisticsApplication.dto.request.user.UserStatusUpdateRequestDTO;
 import com.inkfront.logisticsApplication.dto.response.common.PaginatedResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.user.UserDTO;
+import com.inkfront.logisticsApplication.dto.response.user.UserStatsDTO;
 import com.inkfront.logisticsApplication.exception.BadRequestException;
 import com.inkfront.logisticsApplication.exception.ResourceNotFoundException;
 import com.inkfront.logisticsApplication.mapper.UserMapper;
@@ -17,6 +18,8 @@ import com.inkfront.logisticsApplication.domain.constants.ErrorMessages;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.core.io.ByteArrayResource;
+import org.springframework.core.io.Resource;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -26,7 +29,9 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -154,6 +159,20 @@ public class UserServiceImpl implements UserService {
     }
 
     @Override
+    public PaginatedResponseDTO<UserDTO> searchUsers(String search, int page, int size) {
+        log.info("Searching users with query: {}", search);
+
+        Pageable pageable = PageRequest.of(page, size, Sort.by(Sort.Direction.DESC, "createdAt"));
+        Page<User> users = userRepository.searchUsers(search, pageable);
+
+        List<UserDTO> content = users.getContent().stream()
+                .map(userMapper::toDTO)
+                .collect(Collectors.toList());
+
+        return new PaginatedResponseDTO<>(content, users.getNumber(), users.getSize(), users.getTotalElements());
+    }
+
+    @Override
     public List<UserDTO> getRecentUsers(int limit) {
         Pageable pageable = PageRequest.of(0, limit, Sort.by(Sort.Direction.DESC, "createdAt"));
         Page<User> users = userRepository.findAll(pageable);
@@ -210,5 +229,89 @@ public class UserServiceImpl implements UserService {
 
         user.setProfilePicture(profilePictureUrl);
         userRepository.save(user);
+    }
+
+    @Override
+    public UserStatsDTO getUserStats() {
+        log.info("Getting user statistics");
+
+        long totalUsers = userRepository.count();
+
+        // Count active users (enabled = true)
+        long activeUsers = userRepository.findByEnabled(true).size();
+
+        // Count disabled users (enabled = false)
+        long disabledUsers = userRepository.findByEnabled(false).size();
+
+        // You might want to add a suspended status field to User entity
+        // For now, we'll use a placeholder
+        long suspendedUsers = 0; // Placeholder - can be calculated if you have a status field
+
+        // Get roles distribution
+        Map<String, Long> rolesDistribution = new HashMap<>();
+        for (UserRole role : UserRole.values()) {
+            long count = userRepository.countByRole(role);
+            if (count > 0) {
+                rolesDistribution.put(role.name(), count);
+            }
+        }
+
+        // Get new users this month
+        LocalDateTime monthStart = LocalDateTime.now().withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0);
+        Long newUsersThisMonth = userRepository.countNewUsersSince(monthStart);
+
+        // Get active users this month (users who logged in this month)
+        LocalDateTime monthStartForLogin = LocalDateTime.now().withDayOfMonth(1).withHour(0).withMinute(0).withSecond(0);
+        Long activeUsersThisMonth = userRepository.countActiveUsersSince(monthStartForLogin);
+
+        return UserStatsDTO.builder()
+                .totalUsers(totalUsers)
+                .activeUsers(activeUsers)
+                .disabledUsers(disabledUsers)
+                .suspendedUsers(suspendedUsers)
+                .rolesDistribution(rolesDistribution)
+                .newUsersThisMonth(newUsersThisMonth != null ? newUsersThisMonth : 0L)
+                .activeUsersThisMonth(activeUsersThisMonth != null ? activeUsersThisMonth : 0L)
+                .build();
+    }
+
+    @Override
+    public Resource exportUsers(String format) {
+        log.info("Exporting users in format: {}", format);
+
+        // Get all users
+        List<User> users = userRepository.findAll();
+
+        // Build CSV content
+        StringBuilder csvContent = new StringBuilder();
+        csvContent.append("ID,Email,First Name,Last Name,Phone,Role,Enabled,Created At,Last Login\n");
+
+        for (User user : users) {
+            csvContent.append(user.getId()).append(",")
+                    .append(escapeCsv(user.getEmail())).append(",")
+                    .append(escapeCsv(user.getFirstName())).append(",")
+                    .append(escapeCsv(user.getLastName())).append(",")
+                    .append(user.getPhoneNumber() != null ? escapeCsv(user.getPhoneNumber()) : "").append(",")
+                    .append(user.getRole()).append(",")
+                    .append(user.isEnabled()).append(",")
+                    .append(user.getCreatedAt()).append(",")
+                    .append(user.getLastLogin() != null ? user.getLastLogin() : "")
+                    .append("\n");
+        }
+
+        // Return as Resource
+        byte[] bytes = csvContent.toString().getBytes();
+        return new ByteArrayResource(bytes);
+    }
+
+    // Helper method to escape CSV fields
+    private String escapeCsv(String value) {
+        if (value == null) {
+            return "";
+        }
+        if (value.contains(",") || value.contains("\"") || value.contains("\n")) {
+            return "\"" + value.replace("\"", "\"\"") + "\"";
+        }
+        return value;
     }
 }

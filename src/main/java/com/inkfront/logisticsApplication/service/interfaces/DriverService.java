@@ -9,70 +9,42 @@ import java.util.List;
 
 public interface DriverService {
 
-
-
-
-
     void updateDriverRatingStats(String driverId);
 
-    DriverDTO registerDriver(
-            DriverRegistrationRequestDTO registrationRequest);
+    DriverDTO registerDriver(DriverRegistrationRequestDTO registrationRequest);
 
-    DriverDTO updateDriver(
-            String driverId,
-            DriverUpdateRequestDTO updateRequest);
+    DriverDTO updateDriver(String driverId, DriverUpdateRequestDTO updateRequest);
 
-    DriverDTO getDriverById(
-            String driverId);
+    DriverDTO getDriverById(String driverId);
 
-    DriverDTO getMyProfile(
-            String driverId);
+    DriverDTO getMyProfile(String driverId);
 
-    DriverDTO getDriverByEmail(
-            String email);
+    DriverDTO getDriverByEmail(String email);
 
-    PaginatedResponseDTO<DriverDTO> getAllDrivers(
-            int page,
-            int size,
-            String sortBy,
-            String sortDirection);
+    PaginatedResponseDTO<DriverDTO> getAllDrivers(int page, int size, String sortBy, String sortDirection);
 
-    PaginatedResponseDTO<DriverDTO> getAvailableDrivers(
-            int page,
-            int size);
+    PaginatedResponseDTO<DriverDTO> getAvailableDrivers(int page, int size);
 
-    List<DriverDTO> getAvailableDriversForAssignment(
-            String vehicleType);
+    List<DriverDTO> getAvailableDriversForAssignment(String vehicleType);
 
-    void deleteDriver(
-            String driverId);
-    DriverDTO updateAvailability(
-            String driverId,
-            DriverAvailabilityRequestDTO request
-    );
+    void deleteDriver(String driverId);
 
-    DriverDTO updateLocation(
-            String driverId,
-            DriverLocationRequestDTO request
-    );
+    DriverDTO updateAvailability(String driverId, DriverAvailabilityRequestDTO request);
 
-    List<DriverEarningDTO> getDriverEarnings(
-            String driverId);
+    // NEW: Update availability with boolean (for admin)
+    DriverDTO updateAvailability(String driverId, boolean available);
 
-    PaginatedResponseDTO<DriverEarningDTO> getDriverEarningsPaginated(
-            String driverId,
-            int page,
-            int size);
+    DriverDTO updateLocation(String driverId, DriverLocationRequestDTO request);
 
-    Double getDriverTotalEarnings(
-            String driverId);
+    List<DriverEarningDTO> getDriverEarnings(String driverId);
 
-    Double getDriverUnpaidEarnings(
-            String driverId);
+    PaginatedResponseDTO<DriverEarningDTO> getDriverEarningsPaginated(String driverId, int page, int size);
 
-    void processDriverPayment(
-            String driverId,
-            Double amount);
+    Double getDriverTotalEarnings(String driverId);
+
+    Double getDriverUnpaidEarnings(String driverId);
+
+    void processDriverPayment(String driverId, Double amount);
 
     long countTotalDrivers();
 
@@ -80,6 +52,11 @@ public interface DriverService {
 
     double getAverageDriverRating();
 
+    // NEW: Search drivers
+    PaginatedResponseDTO<DriverDTO> searchDrivers(String search, int page, int size);
 
+    // NEW: Get unavailable drivers
+    PaginatedResponseDTO<DriverDTO> getUnavailableDrivers(int page, int size);
 
+    DriverDTO verifyDriver(String driverId);
 }

@@ -18,6 +18,6 @@ public class RevenueAnalyticsDTO {
     private String formattedTotalRevenue;
     private Double averageDailyRevenue;
     private Double growthPercentage;
-    private List<Map<String, Object>> revenueByPeriod; // period -> amount
+    private List<RevenuePointDTO> revenueByPeriod;
     private String currency;
 }

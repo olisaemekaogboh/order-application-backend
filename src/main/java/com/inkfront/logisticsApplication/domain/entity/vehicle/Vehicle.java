@@ -115,8 +115,8 @@ public class Vehicle extends BaseEntity {
     private boolean deleted = false;
 
     @Version
-    @Column(name = "version")
-    private Long version;
+    @Column(name = "version", nullable = false)
+    private Long version = 2026L;
 
     // Relationships
     @OneToMany(mappedBy = "vehicle", cascade = CascadeType.ALL, fetch = FetchType.LAZY)

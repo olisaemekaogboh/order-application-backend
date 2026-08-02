@@ -26,20 +26,13 @@ public interface DriverRepository extends JpaRepository<Driver, String> {
     Optional<Driver> findByVehiclePlateNumber(String vehiclePlateNumber);
 
     boolean existsByEmail(String email);
-    Optional<Driver> findByIdAndEmail(
-            String driverId,
-            String email
-    );
+    Optional<Driver> findByIdAndEmail(String driverId, String email);
 
-    Optional<Driver> findByIdAndVerifiedTrue(
-            String driverId
-    );
+    Optional<Driver> findByIdAndVerifiedTrue(String driverId);
 
     Page<Driver> findByVerifiedTrue(Pageable pageable);
 
-    List<Driver> findByAvailableTrueAndVerifiedTrueAndVehicleType(
-            VehicleType vehicleType
-    );
+    List<Driver> findByAvailableTrueAndVerifiedTrueAndVehicleType(VehicleType vehicleType);
 
     boolean existsByIdAndVerifiedTrue(String driverId);
     boolean existsByPhoneNumber(String phoneNumber);
@@ -51,6 +44,13 @@ public interface DriverRepository extends JpaRepository<Driver, String> {
     List<Driver> findByAvailableTrue();
     Page<Driver> findByAvailableTrue(Pageable pageable);
     List<Driver> findByAvailableTrueAndVerifiedTrue();
+
+    // NEW: Find unavailable drivers
+    Page<Driver> findByAvailableFalse(Pageable pageable);
+
+    // NEW: Search drivers by name, email, phone, or license number
+    Page<Driver> findByNameContainingIgnoreCaseOrEmailContainingIgnoreCaseOrPhoneNumberContainingIgnoreCaseOrLicenseNumberContainingIgnoreCase(
+            String name, String email, String phone, String license, Pageable pageable);
 
     List<Driver> findByVehicleType(VehicleType vehicleType);
 
@@ -93,8 +93,20 @@ public interface DriverRepository extends JpaRepository<Driver, String> {
             @Param("latitude") Double latitude,
             @Param("longitude") Double longitude
     );
-    // repository/DriverRepository.java - Add these methods
 
     @Query("SELECT COUNT(d) FROM Driver d WHERE d.available = false AND d.currentLocation IS NOT NULL")
     Long countBusyDrivers();
+
+    @Query("SELECT COUNT(d) FROM Driver d WHERE d.available = false")
+    Long countOfflineDrivers();
+
+    @Query("""
+SELECT COUNT(o)
+FROM Order o
+WHERE o.driver.id = :driverId
+AND o.status = com.inkfront.logisticsApplication.domain.enums.OrderStatus.DELIVERED
+""")
+    Long countCompletedDeliveries(@Param("driverId") String driverId);
+
+
 }

@@ -31,7 +31,6 @@ public interface UserRepository extends JpaRepository<User, String> {
 
     Page<User> findByRole(UserRole role, Pageable pageable);
 
-    List<User> findByRole(UserRole role);
 
     List<User> findByEnabled(boolean enabled);
 
@@ -72,4 +71,8 @@ public interface UserRepository extends JpaRepository<User, String> {
 
     @Query("SELECT COUNT(u) FROM User u WHERE u.lastLogin >= :date")
     Long countActiveUsersSince(@Param("date") LocalDateTime date);
+
+    // Add this method to UserRepository.java
+    @Query("SELECT u FROM User u WHERE u.role = :role")
+    List<User> findByRole(@Param("role") UserRole role);
 }

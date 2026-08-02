@@ -4,6 +4,7 @@ import com.inkfront.logisticsApplication.domain.entity.PaymentTransaction;
 import com.inkfront.logisticsApplication.domain.enums.PaymentGateway;
 import com.inkfront.logisticsApplication.domain.enums.PaymentMethod;
 import com.inkfront.logisticsApplication.domain.enums.PaymentStatus;
+import com.inkfront.logisticsApplication.repository.projection.RevenueByDayProjection;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -75,4 +76,54 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
 
     @Query("SELECT SUM(pt.amount) FROM PaymentTransaction pt WHERE pt.status = 'PAID'")
     BigDecimal sumSuccessfulPayments();
+
+
+    @Query("""
+    SELECT SUM(pt.amount)
+    FROM PaymentTransaction pt
+    WHERE pt.status = 'PAID'
+      AND pt.paymentDate BETWEEN :start AND :end
+""")
+    BigDecimal sumSuccessfulPaymentsBetween(
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end
+    );
+
+    @Query("""
+    SELECT COUNT(pt)
+    FROM PaymentTransaction pt
+    WHERE pt.status = :status
+      AND pt.paymentDate BETWEEN :start AND :end
+""")
+    Long countByStatusBetweenDates(
+            @Param("status") PaymentStatus status,
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end
+    );
+
+    @Query("""
+    SELECT SUM(pt.amount)
+    FROM PaymentTransaction pt
+    WHERE pt.status = 'PAID'
+      AND pt.paymentDate BETWEEN :startDate
+      AND :endDate
+""")
+    BigDecimal sumPaidAmountBetweenDates(
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate
+    );
+    @Query(value = """
+SELECT
+    CAST(payment_date AS DATE) AS period,
+    SUM(amount) AS amount
+FROM payment_transactions
+WHERE status = 'PAID'
+AND payment_date BETWEEN :startDate AND :endDate
+GROUP BY CAST(payment_date AS DATE)
+ORDER BY period
+""", nativeQuery = true)
+    List<RevenueByDayProjection> getRevenueGroupedByDay(
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate
+    );
 }

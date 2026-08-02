@@ -60,4 +60,11 @@ public class DashboardStatsDTO {
 
     // Growth Metrics
     private Map<String, Double> growthPercentage;
+
+    private Long overdueOrders;
+    private Long failedPayments;
+    private Long unreadNotifications;
+    private Long pendingDispatches;
+    private Long availableVehicles;
+    private Long maintenanceVehicles;
 }

@@ -56,4 +56,64 @@ public interface ReviewRepository extends JpaRepository<Review, String> {
 
     @Query("SELECT r FROM Review r WHERE r.reported = true AND r.moderationStatus = 'PENDING'")
     List<Review> findReportedReviewsPendingModeration();
+
+    @Query("""
+SELECT AVG(r.rating)
+FROM Review r
+WHERE r.reviewStatus = 'ACTIVE'
+AND r.moderationStatus = 'APPROVED'
+""")
+    Double calculateOverallAverageRating();
+
+    @Query("""
+SELECT COUNT(r)
+FROM Review r
+WHERE r.reviewStatus = 'ACTIVE'
+AND r.moderationStatus = 'APPROVED'
+""")
+    Long countActiveApprovedReviews();
+
+    @Query("""
+SELECT COUNT(r)
+FROM Review r
+WHERE r.rating = :rating
+AND r.reviewStatus = 'ACTIVE'
+AND r.moderationStatus = 'APPROVED'
+""")
+    Long countByRating(@Param("rating") Integer rating);
+
+    @Query("""
+SELECT AVG(r.rating)
+FROM Review r
+WHERE r.reviewType = com.inkfront.logisticsApplication.domain.enums.ReviewType.CUSTOMER_TO_DRIVER
+AND r.reviewStatus = 'ACTIVE'
+AND r.moderationStatus = 'APPROVED'
+""")
+    Double calculateDriverAverageRating();
+
+    @Query("""
+SELECT AVG(r.rating)
+FROM Review r
+WHERE r.reviewType = com.inkfront.logisticsApplication.domain.enums.ReviewType.DRIVER_TO_CUSTOMER
+AND r.reviewStatus = 'ACTIVE'
+AND r.moderationStatus = 'APPROVED'
+""")
+    Double calculateCustomerAverageRating();
+
+    @Query(value = """
+SELECT TO_CHAR(r.created_at, 'YYYY-MM') AS month,
+COUNT(r.id) AS review_count
+FROM reviews r
+GROUP BY TO_CHAR(r.created_at, 'YYYY-MM')
+ORDER BY TO_CHAR(r.created_at, 'YYYY-MM')
+""", nativeQuery = true)
+    List<Object[]> countReviewsByMonth();
+
+    @Query("""
+SELECT COUNT(r)
+FROM Review r
+WHERE r.reported = true
+AND r.moderationStatus = 'PENDING'
+""")
+    Long countReportedReviewsPendingModeration();
 }
