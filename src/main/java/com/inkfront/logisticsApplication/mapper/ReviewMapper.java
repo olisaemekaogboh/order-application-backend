@@ -26,6 +26,15 @@ public interface ReviewMapper {
     @Mapping(target = "driverName", source = "driver.name")
     @Mapping(target = "customerName", source = "customer.fullName")
     @Mapping(target = "commentSnippet", expression = "java(review.getComment() != null && review.getComment().length() > 50 ? review.getComment().substring(0, 50) + \"...\" : review.getComment())")
+    // ADD THESE MAPPINGS FOR THE MISSING FIELDS
+    @Mapping(target = "moderationStatus", expression = "java(review.getModerationStatus() != null ? review.getModerationStatus().name() : null)")
+    @Mapping(target = "reviewStatus", expression = "java(review.getReviewStatus() != null ? review.getReviewStatus().name() : null)")
+    @Mapping(target = "reported", source = "reported")
+    @Mapping(target = "deleted", source = "deleted")
+    @Mapping(target = "updatedAt", source = "updatedAt")
+    @Mapping(target = "rating", source = "rating")
+    @Mapping(target = "title", source = "title")
+    @Mapping(target = "createdAt", source = "createdAt")
     ReviewSummaryDTO toSummaryDTO(Review review);
 
     List<ReviewSummaryDTO> toSummaryDTOList(List<Review> reviews);

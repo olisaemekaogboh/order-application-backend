@@ -17,6 +17,14 @@ public interface NotificationService {
 
     void broadcastNotification(BroadcastNotificationRequestDTO request);
 
+    // ✅ FIXED: markAsRead with userId and notificationId
+    NotificationDTO markAsRead(String userId, String notificationId);
+
+    // ✅ NEW: markAsUnread
+    NotificationDTO markAsUnread(String userId, String notificationId);
+
+    // ✅ Deprecated: markAsRead with DTO (kept for backward compatibility)
+    @Deprecated
     NotificationDTO markAsRead(String notificationId, NotificationReadRequestDTO request);
 
     // --- Legacy methods (kept for backward compatibility; delegate to new ones) ---

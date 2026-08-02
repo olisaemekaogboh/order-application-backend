@@ -14,6 +14,7 @@ import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
@@ -82,23 +83,40 @@ public class NotificationController {
         );
     }
 
+    // ✅ FIXED: Mark notification as read - simpler endpoint without request body
     @PutMapping("/{notificationId}/read")
-    @Operation(summary = "Mark notification as read/unread")
+    @Operation(summary = "Mark notification as read")
     public ResponseEntity<ApiResponseDTO<NotificationDTO>> markAsRead(
             Authentication authentication,
-            @PathVariable String notificationId,
-            @Valid @RequestBody NotificationReadRequestDTO request) {
+            @PathVariable String notificationId) {
 
         AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
-        log.info("Mark notification as read/unread for user: {} notification: {}",
+        log.info("Mark notification as read for user: {} notification: {}",
                 user.getEmail(), notificationId);
 
-        // Verify ownership first
-        notificationService.getNotificationById(user.getId(), notificationId);
-        NotificationDTO updated = notificationService.markAsRead(notificationId, request);
+        // Verify ownership and mark as read
+        NotificationDTO updated = notificationService.markAsRead(user.getId(), notificationId);
 
         return ResponseEntity.ok(
-                ApiResponseDTO.success("Notification updated", updated)
+                ApiResponseDTO.success("Notification marked as read", updated)
+        );
+    }
+
+    // ✅ FIXED: Mark notification as unread - endpoint to unread
+    @PutMapping("/{notificationId}/unread")
+    @Operation(summary = "Mark notification as unread")
+    public ResponseEntity<ApiResponseDTO<NotificationDTO>> markAsUnread(
+            Authentication authentication,
+            @PathVariable String notificationId) {
+
+        AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
+        log.info("Mark notification as unread for user: {} notification: {}",
+                user.getEmail(), notificationId);
+
+        NotificationDTO updated = notificationService.markAsUnread(user.getId(), notificationId);
+
+        return ResponseEntity.ok(
+                ApiResponseDTO.success("Notification marked as unread", updated)
         );
     }
 
@@ -187,6 +205,7 @@ public class NotificationController {
 
     @PostMapping("/send")
     @Operation(summary = "Send notification to a specific user (admin only)")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponseDTO<NotificationDTO>> sendNotification(
             @Valid @RequestBody NotificationRequestDTO request) {
 
@@ -201,6 +220,7 @@ public class NotificationController {
 
     @PostMapping("/broadcast")
     @Operation(summary = "Broadcast notification to users (admin only)")
+    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponseDTO<Void>> broadcastNotification(
             @Valid @RequestBody BroadcastNotificationRequestDTO request) {
 

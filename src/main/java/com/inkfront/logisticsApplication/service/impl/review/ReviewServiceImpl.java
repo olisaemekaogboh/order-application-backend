@@ -278,29 +278,34 @@ public class ReviewServiceImpl implements ReviewService {
     }
 
     private void updateDriverRatingStats(String driverId) {
-        // Compute statistics
-        Double avg = reviewRepository.calculateAverageRatingForDriver(driverId);
-        Long totalReviews = reviewRepository.countActiveReviewsForDriver(driverId);
-        Long oneStar = reviewRepository.countByDriverIdAndRating(driverId, 1);
-        Long twoStar = reviewRepository.countByDriverIdAndRating(driverId, 2);
-        Long threeStar = reviewRepository.countByDriverIdAndRating(driverId, 3);
-        Long fourStar = reviewRepository.countByDriverIdAndRating(driverId, 4);
-        Long fiveStar = reviewRepository.countByDriverIdAndRating(driverId, 5);
+        try {
+            // Compute statistics - handle null values properly
+            Double avg = reviewRepository.calculateAverageRatingForDriver(driverId);
+            Long totalReviews = reviewRepository.countActiveReviewsForDriver(driverId);
+            Long oneStar = reviewRepository.countByDriverIdAndRating(driverId, 1);
+            Long twoStar = reviewRepository.countByDriverIdAndRating(driverId, 2);
+            Long threeStar = reviewRepository.countByDriverIdAndRating(driverId, 3);
+            Long fourStar = reviewRepository.countByDriverIdAndRating(driverId, 4);
+            Long fiveStar = reviewRepository.countByDriverIdAndRating(driverId, 5);
 
-        Driver driver = driverRepository.findById(driverId)
-                .orElseThrow(() -> new IllegalArgumentException("Driver not found"));
+            Driver driver = driverRepository.findById(driverId)
+                    .orElseThrow(() -> new IllegalArgumentException("Driver not found"));
 
-        // Update driver fields
-        driver.setRating(avg != null ? avg : 0.0);
-        driver.setTotalReviews(totalReviews != null ? totalReviews.intValue() : 0);
-        driver.setOneStarCount(oneStar != null ? oneStar.intValue() : 0);
-        driver.setTwoStarCount(twoStar != null ? twoStar.intValue() : 0);
-        driver.setThreeStarCount(threeStar != null ? threeStar.intValue() : 0);
-        driver.setFourStarCount(fourStar != null ? fourStar.intValue() : 0);
-        driver.setFiveStarCount(fiveStar != null ? fiveStar.intValue() : 0);
+            // Update driver fields - handle null values with proper defaults
+            driver.setRating(avg != null ? avg : 0.0);
+            driver.setTotalReviews(totalReviews != null ? totalReviews.intValue() : 0);
+            driver.setOneStarCount(oneStar != null ? oneStar.intValue() : 0);
+            driver.setTwoStarCount(twoStar != null ? twoStar.intValue() : 0);
+            driver.setThreeStarCount(threeStar != null ? threeStar.intValue() : 0);
+            driver.setFourStarCount(fourStar != null ? fourStar.intValue() : 0);
+            driver.setFiveStarCount(fiveStar != null ? fiveStar.intValue() : 0);
 
-        driverRepository.save(driver);
-        log.info("Updated driver rating stats for driver {}: avg={}, total={}, stars: 5={},4={},3={},2={},1={}",
-                driverId, avg, totalReviews, fiveStar, fourStar, threeStar, twoStar, oneStar);
+            driverRepository.save(driver);
+            log.info("Updated driver rating stats for driver {}: avg={}, total={}, stars: 5={},4={},3={},2={},1={}",
+                    driverId, avg, totalReviews, fiveStar, fourStar, threeStar, twoStar, oneStar);
+        } catch (Exception e) {
+            log.error("Failed to update driver rating stats for driver {}: {}", driverId, e.getMessage());
+            // Don't throw the exception - just log it
+        }
     }
 }

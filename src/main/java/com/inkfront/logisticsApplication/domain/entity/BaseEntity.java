@@ -1,8 +1,5 @@
 package com.inkfront.logisticsApplication.domain.entity;
 
-
-
-
 import jakarta.persistence.*;
 import lombok.Data;
 import org.springframework.data.annotation.CreatedDate;
@@ -20,6 +17,7 @@ public abstract class BaseEntity {
     @GeneratedValue(strategy = GenerationType.UUID)
     @Column(name = "id", updatable = false, nullable = false)
     private String id;
+
 
     @CreatedDate
     @Column(name = "created_at", nullable = false, updatable = false)

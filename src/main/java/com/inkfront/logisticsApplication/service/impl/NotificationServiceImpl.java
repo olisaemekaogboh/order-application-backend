@@ -75,12 +75,9 @@ public class NotificationServiceImpl implements NotificationService {
     public NotificationPreferenceResponseDTO updatePreferences(String userId, NotificationPreferenceRequestDTO request) {
         log.info("Updating notification preferences for user: {}", userId);
 
-        // Verify user exists
         userRepository.findById(userId)
                 .orElseThrow(() -> new ResourceNotFoundException("User not found"));
 
-        // Since User entity does not have preference fields, we cannot persist them.
-        // Return the requested preferences as a response (no persistence).
         log.warn("Notification preferences are not persisted because User entity lacks the required fields.");
 
         return NotificationPreferenceResponseDTO.builder()
@@ -118,7 +115,39 @@ public class NotificationServiceImpl implements NotificationService {
         log.info("Broadcasted to {} users", recipients.size());
     }
 
+    // ✅ FIXED: Mark as read - simpler method without DTO
     @Override
+    public NotificationDTO markAsRead(String userId, String notificationId) {
+        log.info("Marking notification {} as read for user {}", notificationId, userId);
+
+        Notification notification = notificationRepository.findByIdAndUserId(notificationId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Notification not found"));
+
+        notification.setRead(true);
+        notification.setReadAt(LocalDateTime.now());
+
+        notification = notificationRepository.save(notification);
+        return notificationMapper.toDTO(notification);
+    }
+
+    // ✅ NEW: Mark as unread
+    @Override
+    public NotificationDTO markAsUnread(String userId, String notificationId) {
+        log.info("Marking notification {} as unread for user {}", notificationId, userId);
+
+        Notification notification = notificationRepository.findByIdAndUserId(notificationId, userId)
+                .orElseThrow(() -> new ResourceNotFoundException("Notification not found"));
+
+        notification.setRead(false);
+        notification.setReadAt(null);
+
+        notification = notificationRepository.save(notification);
+        return notificationMapper.toDTO(notification);
+    }
+
+    // ✅ FIXED: markAsRead with DTO (kept for backward compatibility if needed)
+    @Override
+    @Deprecated
     public NotificationDTO markAsRead(String notificationId, NotificationReadRequestDTO request) {
         log.info("Marking notification {} as read={}", notificationId, request.getRead());
 

@@ -21,4 +21,10 @@ public class ReviewSummaryDTO {
     private String title;
     private String commentSnippet; // truncated comment
     private LocalDateTime createdAt;
+
+    private String moderationStatus;
+    private String reviewStatus;
+    private Boolean reported;
+    private Boolean deleted;
+    private String updatedAt;
 }
