@@ -16,6 +16,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.web.client.HttpClientErrorException;
 import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.ResourceAccessException;
 
 import java.time.LocalDateTime;
 import java.util.HashMap;
@@ -61,6 +62,9 @@ public class FlutterwavePaymentGatewayService implements PaymentGatewayService {
             customizations.put("title", "Payment for Order " + transaction.getOrder().getOrderNumber());
             payload.put("customizations", customizations);
 
+            log.info("Sending request to Flutterwave: {}", flutterwaveProperties.getBaseUrl() + INITIALIZE_URL);
+            log.debug("Request payload: {}", payload);
+
             HttpHeaders headers = createHeaders();
             HttpEntity<Map<String, Object>> httpEntity = new HttpEntity<>(payload, headers);
 
@@ -71,9 +75,17 @@ public class FlutterwavePaymentGatewayService implements PaymentGatewayService {
                     JsonNode.class
             );
 
+            log.info("Flutterwave response status: {}", response.getStatusCode());
+
             JsonNode body = response.getBody();
-            if (body == null || !"success".equals(body.path("status").asText())) {
-                String message = body != null ? body.path("message").asText("Unknown error") : "Empty response";
+            if (body == null) {
+                throw new PaymentGatewayException("Flutterwave returned empty response");
+            }
+
+            log.info("Flutterwave response: {}", body.toString());
+
+            if (!"success".equals(body.path("status").asText())) {
+                String message = body.path("message").asText("Unknown error");
                 throw new PaymentGatewayException("Flutterwave initialization failed: " + message);
             }
 
@@ -84,14 +96,29 @@ public class FlutterwavePaymentGatewayService implements PaymentGatewayService {
             transaction.setGatewayResponse(body.toString());
 
             log.info("Flutterwave payment initialized successfully: {}", transaction.getTransactionReference());
+            log.info("Authorization URL: {}", transaction.getAuthorizationUrl());
             return transaction;
 
-        } catch (HttpClientErrorException | HttpServerErrorException e) {
-            log.error("Flutterwave API error during initialization: {}", e.getResponseBodyAsString(), e);
+        } catch (ResourceAccessException e) {
+            log.error("Connection timeout to Flutterwave API. Please check your internet connection.", e);
+            throw new PaymentGatewayException("Connection to Flutterwave timed out. Please try again.", e);
+        } catch (HttpClientErrorException e) {
+            log.error("Flutterwave HTTP client error: Status={}, Body={}",
+                    e.getStatusCode(), e.getResponseBodyAsString(), e);
+
+            // Check for specific error codes
+            if (e.getStatusCode() == HttpStatus.UNAUTHORIZED) {
+                throw new PaymentGatewayException("Flutterwave authentication failed. Please check your API keys.");
+            } else if (e.getStatusCode() == HttpStatus.BAD_REQUEST) {
+                throw new PaymentGatewayException("Invalid request to Flutterwave: " + e.getResponseBodyAsString());
+            }
             throw new PaymentGatewayException("Flutterwave API error: " + e.getMessage(), e);
+        } catch (HttpServerErrorException e) {
+            log.error("Flutterwave server error: {}", e.getResponseBodyAsString(), e);
+            throw new PaymentGatewayException("Flutterwave server error. Please try again later.", e);
         } catch (Exception e) {
             log.error("Unexpected error during Flutterwave initialization", e);
-            throw new PaymentGatewayException("Failed to initialize Flutterwave payment", e);
+            throw new PaymentGatewayException("Failed to initialize Flutterwave payment: " + e.getMessage(), e);
         }
     }
 
@@ -147,9 +174,9 @@ public class FlutterwavePaymentGatewayService implements PaymentGatewayService {
             log.info("Flutterwave verification completed: {} -> {}", transaction.getTransactionReference(), newStatus);
             return transaction;
 
-        } catch (HttpClientErrorException | HttpServerErrorException e) {
-            log.error("Flutterwave API error during verification: {}", e.getResponseBodyAsString(), e);
-            throw new PaymentGatewayException("Flutterwave API error: " + e.getMessage(), e);
+        } catch (ResourceAccessException e) {
+            log.error("Connection timeout to Flutterwave API during verification", e);
+            throw new PaymentGatewayException("Connection to Flutterwave timed out. Please try again.", e);
         } catch (Exception e) {
             log.error("Unexpected error during Flutterwave verification", e);
             throw new PaymentGatewayException("Failed to verify Flutterwave payment", e);
@@ -194,9 +221,6 @@ public class FlutterwavePaymentGatewayService implements PaymentGatewayService {
             log.info("Flutterwave refund completed for transaction: {}", transaction.getTransactionReference());
             return transaction;
 
-        } catch (HttpClientErrorException | HttpServerErrorException e) {
-            log.error("Flutterwave API error during refund: {}", e.getResponseBodyAsString(), e);
-            throw new PaymentGatewayException("Flutterwave API error: " + e.getMessage(), e);
         } catch (Exception e) {
             log.error("Unexpected error during Flutterwave refund", e);
             throw new PaymentGatewayException("Failed to refund Flutterwave payment", e);
@@ -213,7 +237,12 @@ public class FlutterwavePaymentGatewayService implements PaymentGatewayService {
     private HttpHeaders createHeaders() {
         HttpHeaders headers = new HttpHeaders();
         headers.setContentType(MediaType.APPLICATION_JSON);
-        headers.set("Authorization", "Bearer " + flutterwaveProperties.getSecretKey());
+        String secretKey = flutterwaveProperties.getSecretKey();
+        if (secretKey == null || secretKey.isEmpty()) {
+            log.error("Flutterwave secret key is not configured!");
+            throw new PaymentGatewayException("Flutterwave secret key is missing");
+        }
+        headers.set("Authorization", "Bearer " + secretKey);
         return headers;
     }
 

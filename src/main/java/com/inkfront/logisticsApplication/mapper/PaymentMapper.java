@@ -32,23 +32,16 @@ public abstract class PaymentMapper {
 
     public abstract List<PaymentSummaryDTO> toSummaryDTOList(List<PaymentTransaction> transactions);
 
-    @Mapping(target = "amount", source = "amount", qualifiedByName = "bigDecimalToDouble")
-
     @Named("jsonToMap")
     protected Map<String, Object> jsonToMap(String json) {
-
         if (json == null || json.isBlank()) {
             return Collections.emptyMap();
         }
 
         try {
-            return objectMapper.readValue(
-                    json,
-                    new TypeReference<Map<String, Object>>() {
-                    }
-            );
+            return objectMapper.readValue(json, new TypeReference<Map<String, Object>>() {});
         } catch (Exception ex) {
-            log.error("Failed to deserialize payment metadata.", ex);
+            log.error("Failed to deserialize JSON to Map", ex);
             return Collections.emptyMap();
         }
     }

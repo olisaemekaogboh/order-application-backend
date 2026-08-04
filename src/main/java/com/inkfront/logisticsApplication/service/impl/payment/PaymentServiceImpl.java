@@ -1,5 +1,6 @@
 package com.inkfront.logisticsApplication.service.impl.payment;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.inkfront.logisticsApplication.domain.entity.Order;
 import com.inkfront.logisticsApplication.domain.entity.PaymentTransaction;
 import com.inkfront.logisticsApplication.domain.enums.PaymentGateway;
@@ -11,8 +12,11 @@ import com.inkfront.logisticsApplication.dto.response.payment.PaymentStatisticsD
 import com.inkfront.logisticsApplication.dto.response.payment.PaymentSummaryDTO;
 import com.inkfront.logisticsApplication.dto.response.payment.PaymentVerificationDTO;
 import com.inkfront.logisticsApplication.events.publisher.PaymentEventPublisher;
+import com.inkfront.logisticsApplication.exception.BadRequestException;
 import com.inkfront.logisticsApplication.exception.PaymentNotFoundException;
+import com.inkfront.logisticsApplication.exception.ResourceNotFoundException;
 import com.inkfront.logisticsApplication.mapper.PaymentMapper;
+import com.inkfront.logisticsApplication.repository.OrderRepository;
 import com.inkfront.logisticsApplication.repository.PaymentTransactionRepository;
 import com.inkfront.logisticsApplication.service.interfaces.PaymentService;
 import com.inkfront.logisticsApplication.service.impl.payment.flutterwave.FlutterwaveWebhookService;
@@ -24,6 +28,7 @@ import com.inkfront.logisticsApplication.validator.payment.PaymentStateValidator
 import com.inkfront.logisticsApplication.validator.payment.PaymentValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -32,6 +37,7 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import jakarta.annotation.PostConstruct;
 import java.math.BigDecimal;
 import java.time.LocalDate;
 import java.util.List;
@@ -54,6 +60,19 @@ public class PaymentServiceImpl implements PaymentService {
     private final TransactionReferenceGenerator referenceGenerator;
     private final PaystackWebhookService paystackWebhookService;
     private final FlutterwaveWebhookService flutterwaveWebhookService;
+    private final OrderRepository orderRepository;
+    private final ObjectMapper objectMapper;
+
+    @Value("${payment.provider:paystack}")
+    private String defaultProvider;
+
+    @PostConstruct
+    public void init() {
+        log.info("========================================");
+        log.info("💳 PAYMENT SERVICE INITIALIZED");
+        log.info("Default Provider from config: {}", defaultProvider);
+        log.info("========================================");
+    }
 
     // ==================== NEW (paginated) methods ====================
 
@@ -66,11 +85,11 @@ public class PaymentServiceImpl implements PaymentService {
         Page<PaymentTransaction> pageResult;
 
         if (status != null && gateway != null) {
-            pageResult = paymentTransactionRepository.findByOrderUserId(userId, pageable);
+            pageResult = paymentTransactionRepository.findByOrderUserIdAndStatusAndGateway(userId, status, gateway, pageable);
         } else if (status != null) {
-            pageResult = paymentTransactionRepository.findByStatus(status, pageable);
+            pageResult = paymentTransactionRepository.findByOrderUserIdAndStatus(userId, status, pageable);
         } else if (gateway != null) {
-            pageResult = paymentTransactionRepository.findByGateway(gateway, pageable);
+            pageResult = paymentTransactionRepository.findByOrderUserIdAndGateway(userId, gateway, pageable);
         } else {
             pageResult = paymentTransactionRepository.findByOrderUserId(userId, pageable);
         }
@@ -91,7 +110,7 @@ public class PaymentServiceImpl implements PaymentService {
         Page<PaymentTransaction> pageResult;
 
         if (status != null && gateway != null) {
-            pageResult = paymentTransactionRepository.findAll(pageable);
+            pageResult = paymentTransactionRepository.findByStatusAndGateway(status, gateway, pageable);
         } else if (status != null) {
             pageResult = paymentTransactionRepository.findByStatus(status, pageable);
         } else if (gateway != null) {
@@ -128,25 +147,59 @@ public class PaymentServiceImpl implements PaymentService {
     @Override
     public PaymentResponseDTO initializePayment(InitializePaymentRequestDTO request, String userId) {
         log.info("Initializing payment for order: {} by user: {}", request.getOrderId(), userId);
-        Order order = orderPaymentService.getOrderForPayment(request.getOrderId(), userId);
 
+        // Determine which gateway to use
+        PaymentGateway gatewayToUse = determineGateway(request);
+        request.setGateway(gatewayToUse);
+        log.info("✅ Using payment gateway: {}", request.getGateway());
+
+        // Load order from database to get amount
+        Order order = orderRepository.findById(request.getOrderId())
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found with ID: " + request.getOrderId()));
+
+        // Security check
+        if (!order.getUser().getId().equals(userId)) {
+            throw new AccessDeniedException("You don't have permission to pay for this order");
+        }
+
+        // Check if amount is valid (from order)
+        if (order.getTotalPrice() <= 0) {
+            throw new BadRequestException("Order amount must be greater than zero");
+        }
+
+        // Check for existing transaction
         PaymentTransaction existing = paymentTransactionRepository.findByOrderId(order.getId()).orElse(null);
         if (existing != null && !existing.isCompleted()) {
             log.info("Reusing existing pending transaction: {}", existing.getTransactionReference());
             return paymentMapper.toResponseDTO(existing);
         }
 
+        // Generate reference
         String transactionReference = referenceGenerator.generate();
-        PaymentTransaction transaction = paymentValidator.buildInitialTransaction(request, order, transactionReference);
 
+        // Build transaction using validator - passes the order for amount
+        PaymentTransaction transaction = paymentValidator.buildInitialTransaction(
+                request,
+                order,
+                transactionReference
+        );
+
+        // Initialize with gateway
         PaymentGatewayService gatewayService = gatewayFactory.getService(request.getGateway());
+        log.info("Gateway service class: {}", gatewayService.getClass().getSimpleName());
         transaction = gatewayService.initialize(request, transaction);
 
+        // Save transaction
         transaction = paymentTransactionRepository.save(transaction);
-        orderPaymentService.updateOrderPaymentStatus(order, PaymentStatus.PENDING);
+
+        // Update order status
+        order.setPaymentStatus(PaymentStatus.PENDING);
+        orderRepository.save(order);
+
         eventPublisher.publishPaymentInitialized(transaction);
 
-        log.info("Payment initialized with reference: {}", transactionReference);
+        log.info("✅ Payment initialized with reference: {} using gateway: {}",
+                transactionReference, request.getGateway());
         return paymentMapper.toResponseDTO(transaction);
     }
 
@@ -162,13 +215,27 @@ public class PaymentServiceImpl implements PaymentService {
             throw new AccessDeniedException("You are not allowed to verify this payment");
         }
 
-        stateValidator.validateTransition(transaction.getStatus(), PaymentStatus.PROCESSING);
+        // ✅ Check if already PAID - return success immediately
+        if (transaction.getStatus() == PaymentStatus.PAID) {
+            log.info("Transaction already PAID, returning success");
+            return buildVerificationResponse(transaction, true, "Payment already verified");
+        }
 
+        // ✅ Only validate if not already PROCESSING
+        if (transaction.getStatus() != PaymentStatus.PROCESSING) {
+            stateValidator.validateTransition(transaction.getStatus(), PaymentStatus.PROCESSING);
+        } else {
+            log.info("Transaction already PROCESSING, proceeding with verification");
+        }
+
+        // Get the gateway-specific service and verify
         PaymentGatewayService gatewayService = gatewayFactory.getService(transaction.getGateway());
         transaction = gatewayService.verify(transaction, request.getGatewayReference());
 
+        // ✅ Use transition with same-state check
         transaction = stateValidator.transition(transaction, transaction.getStatus());
 
+        // Handle post-verification actions based on result
         if (transaction.isSuccessful()) {
             orderPaymentService.updateOrderPaymentStatus(transaction.getOrder(), PaymentStatus.PAID);
             notificationService.sendPaymentSuccessNotification(transaction);
@@ -179,16 +246,11 @@ public class PaymentServiceImpl implements PaymentService {
 
         transaction = paymentTransactionRepository.save(transaction);
 
-        return PaymentVerificationDTO.builder()
-                .transactionReference(transaction.getTransactionReference())
-                .orderId(transaction.getOrder().getId())
-                .status(transaction.getStatus())
-                .gatewayReference(transaction.getGatewayReference())
-                .gatewayResponse(transaction.getGatewayResponse())
-                .paymentDate(transaction.getPaymentDate())
-                .successful(transaction.isSuccessful())
-                .message(transaction.isSuccessful() ? "Payment verified successfully" : "Payment verification failed")
-                .build();
+        return buildVerificationResponse(
+                transaction,
+                transaction.isSuccessful(),
+                transaction.isSuccessful() ? "Payment verified successfully" : "Payment verification failed"
+        );
     }
 
     @Override
@@ -297,7 +359,47 @@ public class PaymentServiceImpl implements PaymentService {
         flutterwaveWebhookService.processWebhook(payload, signature);
     }
 
-    // ==================== Helper ====================
+    // ==================== Helper Methods ====================
+
+    /**
+     * Determines which payment gateway to use based on:
+     * 1. Request's specified gateway (if provided)
+     * 2. Default provider from configuration
+     * 3. Fallback to PAYSTACK if default is invalid
+     */
+    private PaymentGateway determineGateway(InitializePaymentRequestDTO request) {
+        if (request.getGateway() != null) {
+            log.info("Using gateway specified in request: {}", request.getGateway());
+            return request.getGateway();
+        }
+
+        try {
+            PaymentGateway gateway = PaymentGateway.valueOf(defaultProvider.toUpperCase());
+            log.info("Using default provider from config: {}", gateway);
+            return gateway;
+        } catch (IllegalArgumentException e) {
+            log.warn("Invalid default provider: {}, falling back to PAYSTACK", defaultProvider);
+            return PaymentGateway.PAYSTACK;
+        }
+    }
+
+    /**
+     * Builds a verification response DTO
+     */
+    private PaymentVerificationDTO buildVerificationResponse(PaymentTransaction transaction,
+                                                             boolean successful,
+                                                             String message) {
+        return PaymentVerificationDTO.builder()
+                .transactionReference(transaction.getTransactionReference())
+                .orderId(transaction.getOrder().getId())
+                .status(transaction.getStatus())
+                .gatewayReference(transaction.getGatewayReference())
+                .gatewayResponse(transaction.getGatewayResponse())
+                .paymentDate(transaction.getPaymentDate())
+                .successful(successful)
+                .message(message)
+                .build();
+    }
 
     private Pageable buildPageable(int page, int size, String sortBy, String sortDirection) {
         Sort sort = Sort.by(Sort.Direction.fromString(sortDirection), sortBy);

@@ -3,9 +3,11 @@ package com.inkfront.logisticsApplication.domain.entity;
 import com.inkfront.logisticsApplication.domain.enums.PaymentGateway;
 import com.inkfront.logisticsApplication.domain.enums.PaymentMethod;
 import com.inkfront.logisticsApplication.domain.enums.PaymentStatus;
+import com.vladmihalcea.hibernate.type.json.JsonStringType;
 import jakarta.persistence.*;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import org.hibernate.annotations.Type;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -85,8 +87,6 @@ public class PaymentTransaction extends BaseEntity {
     @Column(name = "device_id")
     private String deviceId;
 
-
-
     @Column(name = "payment_date")
     private LocalDateTime paymentDate;
 
@@ -105,14 +105,21 @@ public class PaymentTransaction extends BaseEntity {
     @Column(name = "callback_url")
     private String callbackUrl;
 
-    @Column(name = "gateway_response")
+    // ===== JSONB FIELDS - Keep as String but add JSONB column definition =====
+
+    @Type(JsonStringType.class)
+    @Column(name = "gateway_response", columnDefinition = "jsonb")
     private String gatewayResponse;
 
-    @Column(name = "payment_data")
+    @Type(JsonStringType.class)
+    @Column(name = "payment_data", columnDefinition = "jsonb")
     private String paymentData;
 
-    @Column(name = "metadata")
+    @Type(JsonStringType.class)
+    @Column(name = "metadata", columnDefinition = "jsonb")
     private String metadata;
+
+    // ===== END JSONB FIELDS =====
 
     @Column(name = "failure_reason")
     private String failureReason;

@@ -42,6 +42,30 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
 
     Page<PaymentTransaction> findByPaymentMethod(PaymentMethod paymentMethod, Pageable pageable);
 
+    // ==================== NEW PAGINATED QUERY METHODS ====================
+
+    /**
+     * Find payment transactions by user ID and status with pagination
+     */
+    Page<PaymentTransaction> findByOrderUserIdAndStatus(String userId, PaymentStatus status, Pageable pageable);
+
+    /**
+     * Find payment transactions by user ID and gateway with pagination
+     */
+    Page<PaymentTransaction> findByOrderUserIdAndGateway(String userId, PaymentGateway gateway, Pageable pageable);
+
+    /**
+     * Find payment transactions by user ID, status and gateway with pagination
+     */
+    Page<PaymentTransaction> findByOrderUserIdAndStatusAndGateway(String userId, PaymentStatus status, PaymentGateway gateway, Pageable pageable);
+
+    /**
+     * Find payment transactions by status and gateway with pagination
+     */
+    Page<PaymentTransaction> findByStatusAndGateway(PaymentStatus status, PaymentGateway gateway, Pageable pageable);
+
+    // ==================== EXISTING QUERY METHODS ====================
+
     @Query("SELECT pt FROM PaymentTransaction pt WHERE pt.paymentDate BETWEEN :startDate AND :endDate")
     List<PaymentTransaction> findTransactionsBetweenDates(
             @Param("startDate") LocalDateTime startDate,
@@ -77,7 +101,6 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
     @Query("SELECT SUM(pt.amount) FROM PaymentTransaction pt WHERE pt.status = 'PAID'")
     BigDecimal sumSuccessfulPayments();
 
-
     @Query("""
     SELECT SUM(pt.amount)
     FROM PaymentTransaction pt
@@ -112,6 +135,7 @@ public interface PaymentTransactionRepository extends JpaRepository<PaymentTrans
             @Param("startDate") LocalDateTime startDate,
             @Param("endDate") LocalDateTime endDate
     );
+
     @Query(value = """
 SELECT
     CAST(payment_date AS DATE) AS period,

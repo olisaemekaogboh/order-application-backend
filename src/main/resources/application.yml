@@ -210,15 +210,16 @@ payment:
   provider: ${PAYMENT_PROVIDER:paystack}
   paystack:
     base-url: https://api.paystack.co
-    secret-key: ${PAYSTACK_SECRET_KEY:your-paystack-secret-key}
-    public-key: ${PAYSTACK_PUBLIC_KEY:your-paystack-public-key}
-    callback-url: ${PAYSTACK_CALLBACK_URL:http://localhost:8080/api/payments/callback}
+    secret-key: ${PAYSTACK_SECRET_KEY:}
+    public-key: ${PAYSTACK_PUBLIC_KEY:}
+    callback-url: ${PAYSTACK_CALLBACK_URL:http://localhost:3000/payment/callback}
   flutterwave:
-    public-key: ${FLUTTERWAVE_PUBLIC_KEY:your-flutterwave-public-key}
-    secret-key: ${FLUTTERWAVE_SECRET_KEY:your-flutterwave-secret-key}
-    encryption-key: ${FLUTTERWAVE_ENCRYPTION_KEY:your-flutterwave-encryption-key}
     base-url: https://api.flutterwave.com/v3
-    callback-url: https://your-app.com/api/payments/verify
+    public-key: ${FLUTTERWAVE_PUBLIC_KEY:}
+    secret-key: ${FLUTTERWAVE_SECRET_KEY:}
+    encryption-key: ${FLUTTERWAVE_ENCRYPTION_KEY:}
+    callback-url: ${FLUTTERWAVE_CALLBACK_URL:http://localhost:3000/payment/callbac
+
 # Google Maps
 google:
   maps:

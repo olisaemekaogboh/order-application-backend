@@ -59,12 +59,11 @@ public class OrderServiceImpl implements OrderService {
     private final NotificationService notificationService;
     private final DistanceService distanceService;
     private final OrderNumberGenerator orderNumberGenerator;
-
     @Override
     public PriceCalculationResponseDTO calculatePrice(PriceCalculationRequestDTO request) {
+        // ... keep existing implementation unchanged
         log.info("Calculating price for distance: {} km, vehicle: {}", request.getDistanceKm(), request.getVehicleType());
 
-        // Validate distance
         if (request.getDistanceKm() < AppConstants.MINIMUM_DISTANCE_KM) {
             throw new BadRequestException("Distance must be at least " + AppConstants.MINIMUM_DISTANCE_KM + " km");
         }
@@ -73,25 +72,19 @@ public class OrderServiceImpl implements OrderService {
             throw new BadRequestException("Distance cannot exceed " + AppConstants.MAXIMUM_DISTANCE_KM + " km");
         }
 
-        // Get pricing configuration
         PricingConfig config = pricingConfigRepository
                 .findByVehicleTypeAndActiveTrue(request.getVehicleType())
                 .orElseThrow(() -> new ResourceNotFoundException("Pricing configuration not found for vehicle type: " + request.getVehicleType()));
 
-        // Calculate base price
         double basePrice = request.getDistanceKm() * config.getBaseRatePerKm();
-
-        // Calculate surcharges
         double weightSurcharge = request.getWeight() * config.getWeightSurchargePerKg();
         double volumeSurcharge = request.getVolume() * config.getVolumeSurchargePerCubicMeter();
         double expressSurcharge = request.isExpressDelivery() ? config.getExpressSurcharge() : 0.0;
         double nightSurcharge = request.isNightDelivery() ? config.getNightSurcharge() : 0.0;
 
-        // Calculate total
         double totalPrice = basePrice + weightSurcharge + volumeSurcharge + expressSurcharge + nightSurcharge;
         totalPrice = Math.max(totalPrice, config.getMinimumCharge());
 
-        // Create response
         PriceCalculationResponseDTO response = priceCalculationMapper.toDTO(
                 request,
                 config.getBaseRatePerKm(),
@@ -109,76 +102,61 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
+    @Transactional
     public OrderResponseDTO createOrder(OrderRequestDTO orderRequest, String userId) {
-
         log.info("Creating order for user: {}", userId);
 
         User user = userRepository.findById(userId)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException(ErrorMessages.USER_NOT_FOUND));
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.USER_NOT_FOUND));
 
         if (orderRequest.getDistanceKm() < AppConstants.MINIMUM_DISTANCE_KM) {
-            throw new BadRequestException(
-                    "Distance must be at least "
-                            + AppConstants.MINIMUM_DISTANCE_KM
-                            + " km");
+            throw new BadRequestException("Distance must be at least " + AppConstants.MINIMUM_DISTANCE_KM + " km");
         }
 
         PricingConfig config = pricingConfigRepository
                 .findByVehicleTypeAndActiveTrue(orderRequest.getVehicleType())
-                .orElseThrow(() ->
-                        new ResourceNotFoundException(
-                                "Pricing configuration not found"));
+                .orElseThrow(() -> new ResourceNotFoundException("Pricing configuration not found"));
 
-        PriceCalculationRequestDTO priceRequest =
-                new PriceCalculationRequestDTO();
-
+        PriceCalculationRequestDTO priceRequest = new PriceCalculationRequestDTO();
         priceRequest.setDistanceKm(orderRequest.getDistanceKm());
         priceRequest.setWeight(orderRequest.getWeight());
         priceRequest.setVolume(orderRequest.getVolume());
         priceRequest.setVehicleType(orderRequest.getVehicleType());
         priceRequest.setExpressDelivery(orderRequest.isExpressDelivery());
 
-        PriceCalculationResponseDTO priceResponse =
-                calculatePrice(priceRequest);
+        PriceCalculationResponseDTO priceResponse = calculatePrice(priceRequest);
 
         Order order = orderMapper.toEntity(orderRequest);
-
         order.setOrderNumber(orderNumberGenerator.generateOrderNumber());
         order.setUser(user);
-
         order.setBasePrice(priceResponse.getBasePrice());
         order.setWeightSurcharge(priceResponse.getWeightSurcharge());
         order.setVolumeSurcharge(priceResponse.getVolumeSurcharge());
         order.setExpressSurcharge(priceResponse.getExpressSurcharge());
         order.setTotalPrice(priceResponse.getTotalPrice());
-
         order.setCurrency(priceResponse.getCurrency());
-
         order.setExpress(orderRequest.isExpressDelivery());
-
         order.setOrderDate(LocalDateTime.now());
 
-        long estimatedHours =
-                distanceService.estimateTravelTime(
-                        orderRequest.getDistanceKm(),
-                        orderRequest.getVehicleType().name());
+        // Payment status defaults to PENDING
+        // Status defaults to PENDING
+        // No payment transaction is created here - that's the payment service's job
 
-        order.setEstimatedDeliveryDate(
-                orderRequest.getPickupDate().plusHours(estimatedHours));
+        long estimatedHours = distanceService.estimateTravelTime(
+                orderRequest.getDistanceKm(),
+                orderRequest.getVehicleType().name());
+        order.setEstimatedDeliveryDate(orderRequest.getPickupDate().plusHours(estimatedHours));
 
         order = orderRepository.save(order);
-
 
         notificationService.sendOrderUpdateNotification(
                 userId,
                 order.getId(),
                 "CREATED");
 
+        log.info("Order created successfully with ID: {} and number: {}", order.getId(), order.getOrderNumber());
         return orderMapper.toDTO(order);
     }
-
-
 
 
 
@@ -466,45 +444,28 @@ public class OrderServiceImpl implements OrderService {
     }
 
     @Override
-    public OrderResponseDTO updatePaymentStatus(
-            String orderId,
-            PaymentStatusUpdateRequestDTO request) {
-
+    @Transactional
+    public OrderResponseDTO updatePaymentStatus(String orderId, PaymentStatusUpdateRequestDTO request) {
         log.info("Updating payment status for order {} to {}", orderId, request.getPaymentStatus());
 
         Order order = orderRepository.findById(orderId)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException(
-                                ErrorMessages.ORDER_NOT_FOUND));
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.ORDER_NOT_FOUND));
 
-        PaymentStatus status = request.getPaymentStatus();
+        // REMOVED: All payment transaction logic - this is now handled by PaymentService
 
-        order.setPaymentStatus(status);
+        PaymentStatus newStatus = request.getPaymentStatus();
+        order.setPaymentStatus(newStatus);
 
-        // Update the payment transaction if exists
-        try {
-            paymentTransactionRepository.findByOrderId(orderId).ifPresent(payment -> {
-                payment.setStatus(status);
-                if (status == PaymentStatus.PAID) {
-                    payment.setPaymentDate(LocalDateTime.now());
-                }
-                paymentTransactionRepository.save(payment);
-                log.info("Updated payment status for order {} to {}", orderId, status);
-            });
-        } catch (Exception e) {
-            log.error("Failed to update payment transaction for order {}: {}", orderId, e.getMessage());
-        }
+        order = orderRepository.save(order);
 
-        orderRepository.save(order);
-
-        if (status == PaymentStatus.PAID) {
-
+        if (newStatus == PaymentStatus.PAID) {
             notificationService.sendPaymentNotification(
                     order.getUser().getId(),
                     order.getId(),
                     "PAID");
         }
 
+        log.info("Payment status updated for order {} to {}", orderId, newStatus);
         return orderMapper.toDTO(order);
     }
 

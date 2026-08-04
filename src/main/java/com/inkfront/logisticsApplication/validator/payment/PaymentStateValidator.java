@@ -29,8 +29,15 @@ public class PaymentStateValidator {
     }
 
     public void validateTransition(PaymentStatus from, PaymentStatus to) {
+        // ✅ ALLOW SAME STATE TRANSITION (no-op)
+        if (from == to) {
+            log.debug("State transition from {} to {} - same state, skipping validation", from, to);
+            return;
+        }
+
         Set<PaymentStatus> allowed = ALLOWED_TRANSITIONS.getOrDefault(from, EnumSet.noneOf(PaymentStatus.class));
         if (!allowed.contains(to)) {
+            log.error("Invalid transition from {} to {}", from, to);
             throw new InvalidPaymentStateException(
                     String.format("Invalid transition from %s to %s", from, to)
             );
@@ -40,8 +47,16 @@ public class PaymentStateValidator {
 
     public PaymentTransaction transition(PaymentTransaction transaction, PaymentStatus newStatus) {
         PaymentStatus oldStatus = transaction.getStatus();
+
+        // ✅ If same state, just return without changes
+        if (oldStatus == newStatus) {
+            log.info("Transaction already in state {}, returning without changes", newStatus);
+            return transaction;
+        }
+
         validateTransition(oldStatus, newStatus);
         transaction.setStatus(newStatus);
+
         if (newStatus == PaymentStatus.PAID) {
             transaction.setPaymentDate(LocalDateTime.now());
             transaction.setVerifiedAt(LocalDateTime.now());
