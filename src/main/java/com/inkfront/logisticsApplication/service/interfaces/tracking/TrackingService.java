@@ -27,4 +27,6 @@ public interface TrackingService {
     PaginatedResponseDTO<TrackingSessionResponseDTO> getTrackingByDriver(String driverId, int page, int size);
 
     PaginatedResponseDTO<TrackingSessionResponseDTO> getAllTracking(int page, int size, String status, String sortBy, String sortDirection);
+
+    TrackingSessionResponseDTO getTrackingByOrder(String orderId);
 }

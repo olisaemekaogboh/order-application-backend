@@ -1,11 +1,14 @@
 package com.inkfront.logisticsApplication.service.impl.payment;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.inkfront.logisticsApplication.domain.entity.Driver;
 import com.inkfront.logisticsApplication.domain.entity.Order;
 import com.inkfront.logisticsApplication.domain.entity.PaymentTransaction;
+import com.inkfront.logisticsApplication.domain.enums.OrderStatus;
 import com.inkfront.logisticsApplication.domain.enums.PaymentGateway;
 import com.inkfront.logisticsApplication.domain.enums.PaymentStatus;
 import com.inkfront.logisticsApplication.dto.request.payment.*;
+import com.inkfront.logisticsApplication.dto.request.tracking.StartTrackingRequestDTO;
 import com.inkfront.logisticsApplication.dto.response.common.PaginatedResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.payment.PaymentResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.payment.PaymentStatisticsDTO;
@@ -16,13 +19,16 @@ import com.inkfront.logisticsApplication.exception.BadRequestException;
 import com.inkfront.logisticsApplication.exception.PaymentNotFoundException;
 import com.inkfront.logisticsApplication.exception.ResourceNotFoundException;
 import com.inkfront.logisticsApplication.mapper.PaymentMapper;
+import com.inkfront.logisticsApplication.repository.DriverRepository;
 import com.inkfront.logisticsApplication.repository.OrderRepository;
 import com.inkfront.logisticsApplication.repository.PaymentTransactionRepository;
+import com.inkfront.logisticsApplication.repository.tracking.TrackingSessionRepository;
 import com.inkfront.logisticsApplication.service.interfaces.PaymentService;
 import com.inkfront.logisticsApplication.service.impl.payment.flutterwave.FlutterwaveWebhookService;
 import com.inkfront.logisticsApplication.service.impl.payment.gateway.PaymentGatewayFactory;
 import com.inkfront.logisticsApplication.service.impl.payment.paystack.PaystackWebhookService;
 import com.inkfront.logisticsApplication.service.interfaces.payment.PaymentGatewayService;
+import com.inkfront.logisticsApplication.service.interfaces.tracking.TrackingService;
 import com.inkfront.logisticsApplication.util.payment.TransactionReferenceGenerator;
 import com.inkfront.logisticsApplication.validator.payment.PaymentStateValidator;
 import com.inkfront.logisticsApplication.validator.payment.PaymentValidator;
@@ -62,6 +68,9 @@ public class PaymentServiceImpl implements PaymentService {
     private final FlutterwaveWebhookService flutterwaveWebhookService;
     private final OrderRepository orderRepository;
     private final ObjectMapper objectMapper;
+    private final DriverRepository driverRepository;
+    private final TrackingSessionRepository trackingSessionRepository;
+    private final TrackingService trackingService;
 
     @Value("${payment.provider:paystack}")
     private String defaultProvider;
@@ -237,9 +246,25 @@ public class PaymentServiceImpl implements PaymentService {
 
         // Handle post-verification actions based on result
         if (transaction.isSuccessful()) {
-            orderPaymentService.updateOrderPaymentStatus(transaction.getOrder(), PaymentStatus.PAID);
+            Order order = transaction.getOrder();
+
+            // 1. Update payment status
+            orderPaymentService.updateOrderPaymentStatus(order, PaymentStatus.PAID);
+
+            // 2. Update order status from PENDING to ASSIGNED (since PROCESSING doesn't exist)
+            if (order.getStatus() == OrderStatus.PENDING) {
+                order.setStatus(OrderStatus.ASSIGNED);
+                orderRepository.save(order);
+                log.info("✅ Order {} status updated from PENDING to ASSIGNED after payment", order.getId());
+            }
+
+            // 3. Send notifications
             notificationService.sendPaymentSuccessNotification(transaction);
             eventPublisher.publishPaymentCompleted(transaction);
+
+            // 4. Auto-start tracking if driver available
+            startTrackingAfterPayment(transaction, userId);
+
         } else {
             eventPublisher.publishPaymentFailed(transaction);
         }
@@ -251,6 +276,39 @@ public class PaymentServiceImpl implements PaymentService {
                 transaction.isSuccessful(),
                 transaction.isSuccessful() ? "Payment verified successfully" : "Payment verification failed"
         );
+    }
+
+    /**
+     * Helper method to start tracking after successful payment
+     */
+    private void startTrackingAfterPayment(PaymentTransaction transaction, String userId) {
+        try {
+            Order order = transaction.getOrder();
+
+            // Check if tracking already exists
+            if (trackingSessionRepository.findByOrderId(order.getId()).isPresent()) {
+                log.info("Tracking already exists for order: {}", order.getId());
+                return;
+            }
+
+            // Find available driver
+            Driver availableDriver = driverRepository.findFirstByAvailableTrue().orElse(null);
+
+            if (availableDriver != null) {
+                StartTrackingRequestDTO trackingRequest = new StartTrackingRequestDTO();
+                trackingRequest.setOrderId(order.getId());
+                trackingRequest.setDriverId(availableDriver.getId());
+
+                trackingService.startTracking(trackingRequest, userId);
+                log.info("✅ Tracking started for order: {} with driver: {}",
+                        order.getId(), availableDriver.getName());
+            } else {
+                log.warn("⚠️ No driver available for order: {}. Order is in ASSIGNED state waiting for driver assignment.",
+                        order.getId());
+            }
+        } catch (Exception e) {
+            log.warn("⚠️ Could not start tracking for order {}: {}", transaction.getOrder().getId(), e.getMessage());
+        }
     }
 
     @Override

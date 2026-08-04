@@ -121,4 +121,13 @@ public class TrackingController {
                 trackingService.getTrackingByUser(user.getId(), page, size, sortBy, sortDirection);
         return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, response));
     }
+
+    @GetMapping("/order/{orderId}")
+    @Operation(summary = "Get tracking session by order ID")
+    public ResponseEntity<ApiResponseDTO<TrackingSessionResponseDTO>> getTrackingByOrder(
+            @PathVariable String orderId) {
+        log.info("Get tracking by order ID: {}", orderId);
+        TrackingSessionResponseDTO response = trackingService.getTrackingByOrder(orderId);
+        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, response));
+    }
 }

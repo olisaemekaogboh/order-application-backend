@@ -143,6 +143,15 @@ public interface OrderRepository extends JpaRepository<Order, String> {
             @Param("endDate") LocalDateTime endDate
     );
 
+    // Add this method to OrderRepository
+    @Query("SELECT o FROM Order o WHERE o.orderDate BETWEEN :startDate AND :endDate")
+    Page<Order> findOrdersBetweenDates(
+            @Param("startDate") LocalDateTime startDate,
+            @Param("endDate") LocalDateTime endDate,
+            Pageable pageable
+    );
+
+
     @Query("SELECT AVG(o.totalPrice) FROM Order o WHERE o.status = 'DELIVERED' AND o.createdAt BETWEEN :startDate AND :endDate")
     Double averageDeliveredOrderValue(
             @Param("startDate") LocalDateTime startDate,

@@ -1,4 +1,3 @@
-// dto/response/order/OrderTrackingDTO.java
 package com.inkfront.logisticsApplication.dto.response.order;
 
 import com.inkfront.logisticsApplication.domain.enums.OrderStatus;

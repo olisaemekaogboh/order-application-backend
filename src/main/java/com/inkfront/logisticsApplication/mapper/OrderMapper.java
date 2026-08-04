@@ -15,9 +15,6 @@ import org.mapstruct.MappingTarget;
 import org.mapstruct.NullValuePropertyMappingStrategy;
 import org.mapstruct.ReportingPolicy;
 
-
-
-
 import java.time.Duration;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -33,6 +30,8 @@ public abstract class OrderMapper {
 
     @Autowired
     protected DriverMapper driverMapper;
+
+    // ======================== ORDER TO DTO ========================
 
     @Mapping(target = "user", ignore = true)
     @Mapping(target = "driver", ignore = true)
@@ -54,6 +53,8 @@ public abstract class OrderMapper {
             expression = "java(calculateEstimatedDeliveryTime(order))")
     public abstract OrderResponseDTO toDTO(Order order);
 
+    // ======================== DTO TO ENTITY ========================
+
     @Mapping(target = "id", ignore = true)
     @Mapping(target = "orderNumber", ignore = true)
     @Mapping(target = "status", constant = "PENDING")
@@ -66,6 +67,8 @@ public abstract class OrderMapper {
     @Mapping(target = "paymentTransaction", ignore = true)
     @Mapping(target = "deliveryAddress", ignore = true)
     public abstract Order toEntity(OrderRequestDTO orderRequestDTO);
+
+    // ======================== UPDATE ORDER ========================
 
     @BeanMapping(nullValuePropertyMappingStrategy = NullValuePropertyMappingStrategy.IGNORE)
     @Mapping(target = "id", ignore = true)
@@ -82,18 +85,40 @@ public abstract class OrderMapper {
             @MappingTarget Order order
     );
 
-    @Mapping(target = "trackingHistory", ignore = true)
-    @Mapping(target = "currentLatitude", ignore = true)
-    @Mapping(target = "currentLongitude", ignore = true)
+    // ======================== ORDER TO TRACKING DTO ========================
+    // Matches the actual OrderTrackingDTO structure
+
+    @Mapping(target = "orderNumber", source = "orderNumber")
+    @Mapping(target = "status", source = "status")
+    @Mapping(target = "statusDisplayName",
+            expression = "java(order.getStatus() != null ? order.getStatus().getDisplayName() : null)")
+    @Mapping(target = "pickupLocation", source = "pickupLocation")
+    @Mapping(target = "deliveryLocation", source = "deliveryLocation")
+    @Mapping(target = "estimatedDeliveryDate", source = "estimatedDeliveryDate")
+
+    // Driver info - from driver entity
     @Mapping(target = "driverName",
             expression = "java(order.getDriver() != null ? order.getDriver().getName() : null)")
     @Mapping(target = "driverPhone",
             expression = "java(order.getDriver() != null ? order.getDriver().getPhoneNumber() : null)")
-    @Mapping(target = "driverPhoto",
-            expression = "java(null)")
+    @Mapping(target = "driverPhoto", ignore = true)
+
+    // Location info - from driver entity
+    @Mapping(target = "currentLatitude",
+            expression = "java(order.getDriver() != null ? order.getDriver().getCurrentLatitude() : null)")
+    @Mapping(target = "currentLongitude",
+            expression = "java(order.getDriver() != null ? order.getDriver().getCurrentLongitude() : null)")
+
+    // Tracking history - to be populated separately
+    @Mapping(target = "trackingHistory", ignore = true)
+
     public abstract OrderTrackingDTO toTrackingDTO(Order order);
 
+    // ======================== BATCH CONVERSION ========================
+
     public abstract List<OrderResponseDTO> toDTOList(List<Order> orders);
+
+    // ======================== AFTER MAPPING ========================
 
     @AfterMapping
     protected void mapUserAndDriver(
@@ -108,6 +133,8 @@ public abstract class OrderMapper {
             dto.setDriver(driverMapper.toDTO(order.getDriver()));
         }
     }
+
+    // ======================== HELPER METHODS ========================
 
     protected String calculateEstimatedDeliveryTime(Order order) {
         if (order.getEstimatedDeliveryDate() == null) {

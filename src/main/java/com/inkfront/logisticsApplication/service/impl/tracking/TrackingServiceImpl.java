@@ -475,5 +475,17 @@ public class TrackingServiceImpl implements TrackingService {
                 .map(trackingMapper::toResponseDTO)
                 .collect(Collectors.toList());
         return new PaginatedResponseDTO<>(content, page.getNumber(), page.getSize(), page.getTotalElements());
+
+
+    }
+
+    @Override
+    public TrackingSessionResponseDTO getTrackingByOrder(String orderId) {
+        if (!StringUtils.hasText(orderId)) {
+            throw new IllegalArgumentException("Order ID is required");
+        }
+        TrackingSession session = trackingSessionRepository.findByOrderId(orderId)
+                .orElseThrow(() -> new TrackingNotFoundException("No tracking session found for order: " + orderId));
+        return trackingMapper.toResponseDTO(session);
     }
 }

@@ -23,6 +23,8 @@ public interface DriverRepository extends JpaRepository<Driver, String> {
 
     Optional<Driver> findByLicenseNumber(String licenseNumber);
 
+    Optional<Driver> findFirstByAvailableTrue();
+
     Optional<Driver> findByVehiclePlateNumber(String vehiclePlateNumber);
 
     boolean existsByEmail(String email);

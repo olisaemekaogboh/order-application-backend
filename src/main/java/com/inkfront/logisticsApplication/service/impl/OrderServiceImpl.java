@@ -29,10 +29,7 @@ import com.inkfront.logisticsApplication.domain.constants.ErrorMessages;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -222,10 +219,16 @@ public class OrderServiceImpl implements OrderService {
                     pageable
             );
         } else if (filter.getStartDate() != null && filter.getEndDate() != null) {
-            orders = (Page<Order>) orderRepository.findOrdersBetweenDates(
+            // FIX: Convert List<Order> to Page<Order>
+            List<Order> orderList = orderRepository.findOrdersBetweenDates(
                     filter.getStartDate(),
                     filter.getEndDate()
             );
+            // Apply pagination manually
+            int start = (int) pageable.getOffset();
+            int end = Math.min((start + pageable.getPageSize()), orderList.size());
+            List<Order> pagedList = orderList.subList(start, end);
+            orders = new PageImpl<>(pagedList, pageable, orderList.size());
         } else if (filter.getStatus() != null) {
             orders = orderRepository.findByStatus(filter.getStatus(), pageable);
         } else {
@@ -351,23 +354,102 @@ public class OrderServiceImpl implements OrderService {
 
         return orderMapper.toDTO(order);
     }
-
     @Override
-    public OrderTrackingDTO trackOrder(
-            String userId,
-            String orderId) {
+    public OrderTrackingDTO trackOrder(String userId, String orderId) {
+        log.info("Tracking order: {} for user: {}", orderId, userId);
 
+        // 1. Find the order
         Order order = orderRepository
                 .findByIdAndUserId(orderId, userId)
-                .orElseThrow(() ->
-                        new ResourceNotFoundException(
-                                ErrorMessages.ORDER_NOT_FOUND));
+                .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.ORDER_NOT_FOUND));
 
-        OrderTrackingDTO trackingDTO =
-                orderMapper.toTrackingDTO(order);
+        // 2. Convert to tracking DTO using mapper
+        OrderTrackingDTO trackingDTO = orderMapper.toTrackingDTO(order);
 
-        // Future enhancement: Populate tracking history from tracking events table.
+        // 3. Populate tracking history
+        List<OrderTrackingDTO.TrackingUpdateDTO> history = new java.util.ArrayList<>();
 
+        try {
+            // Add order creation event
+            OrderTrackingDTO.TrackingUpdateDTO created = new OrderTrackingDTO.TrackingUpdateDTO();
+            created.setStatus(order.getStatus());
+            created.setStatusDisplayName(order.getStatus() != null ? order.getStatus().getDisplayName() : "Order Created");
+            created.setTimestamp(order.getCreatedAt());
+            created.setDescription("Order created");
+            created.setLocation(order.getPickupLocation());
+            history.add(created);
+
+            // If driver is assigned, add assignment event
+            if (order.getDriver() != null && order.getDriver().getId() != null) {
+                OrderTrackingDTO.TrackingUpdateDTO assigned = new OrderTrackingDTO.TrackingUpdateDTO();
+                assigned.setStatus(OrderStatus.ASSIGNED);
+                assigned.setStatusDisplayName("Driver Assigned");
+                assigned.setTimestamp(order.getUpdatedAt());
+                assigned.setDescription("Driver " + order.getDriver().getName() + " assigned to your order");
+                assigned.setLocation(order.getPickupLocation());
+                history.add(assigned);
+            }
+
+            // If order has been picked up
+            if (order.getPickupDate() != null) {
+                OrderTrackingDTO.TrackingUpdateDTO pickedUp = new OrderTrackingDTO.TrackingUpdateDTO();
+                pickedUp.setStatus(OrderStatus.PICKED_UP);
+                pickedUp.setStatusDisplayName("Picked Up");
+                pickedUp.setTimestamp(order.getPickupDate());
+                pickedUp.setDescription("Package picked up from " + order.getPickupLocation());
+                pickedUp.setLocation(order.getPickupLocation());
+                history.add(pickedUp);
+            }
+
+            // If order is in transit
+            if (order.getStatus() == OrderStatus.IN_TRANSIT) {
+                OrderTrackingDTO.TrackingUpdateDTO inTransit = new OrderTrackingDTO.TrackingUpdateDTO();
+                inTransit.setStatus(OrderStatus.IN_TRANSIT);
+                inTransit.setStatusDisplayName("In Transit");
+                inTransit.setTimestamp(order.getUpdatedAt());
+                inTransit.setDescription("Package is on the way to " + order.getDeliveryLocation());
+                inTransit.setLocation(order.getDeliveryLocation());
+                history.add(inTransit);
+            }
+
+            // If order has been delivered
+            if (order.getDeliveryDate() != null) {
+                OrderTrackingDTO.TrackingUpdateDTO delivered = new OrderTrackingDTO.TrackingUpdateDTO();
+                delivered.setStatus(OrderStatus.DELIVERED);
+                delivered.setStatusDisplayName("Delivered");
+                delivered.setTimestamp(order.getDeliveryDate());
+                delivered.setDescription("Package delivered to " + order.getDeliveryLocation());
+                delivered.setLocation(order.getDeliveryLocation());
+                history.add(delivered);
+            }
+
+            // If order is cancelled
+            if (order.getStatus() == OrderStatus.CANCELLED && order.getCancelledAt() != null) {
+                OrderTrackingDTO.TrackingUpdateDTO cancelled = new OrderTrackingDTO.TrackingUpdateDTO();
+                cancelled.setStatus(OrderStatus.CANCELLED);
+                cancelled.setStatusDisplayName("Cancelled");
+                cancelled.setTimestamp(order.getCancelledAt());
+                cancelled.setDescription(order.getCancellationReason() != null ?
+                        "Order cancelled: " + order.getCancellationReason() :
+                        "Order cancelled");
+                cancelled.setLocation(order.getPickupLocation());
+                history.add(cancelled);
+            }
+
+        } catch (Exception e) {
+            log.warn("Error building tracking history: {}", e.getMessage());
+        }
+
+        // Sort history by timestamp (oldest first)
+        history.sort((a, b) -> {
+            if (a.getTimestamp() == null) return 1;
+            if (b.getTimestamp() == null) return -1;
+            return a.getTimestamp().compareTo(b.getTimestamp());
+        });
+
+        trackingDTO.setTrackingHistory(history);
+
+        log.info("Tracking data built for order: {}, history size: {}", orderId, history.size());
         return trackingDTO;
     }
 
@@ -451,24 +533,28 @@ public class OrderServiceImpl implements OrderService {
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.ORDER_NOT_FOUND));
 
-        // REMOVED: All payment transaction logic - this is now handled by PaymentService
-
         PaymentStatus newStatus = request.getPaymentStatus();
         order.setPaymentStatus(newStatus);
 
-        order = orderRepository.save(order);
-
+        // ===== FIX: Update order status when payment becomes PAID =====
         if (newStatus == PaymentStatus.PAID) {
+            // If order is still PENDING, update to PROCESSING
+            if (order.getStatus() == OrderStatus.PENDING) {
+                order.setStatus(OrderStatus.ASSIGNED);
+                log.info("✅ Order {} status changed from PENDING to PROCESSING after payment update", orderId);
+            }
+
             notificationService.sendPaymentNotification(
                     order.getUser().getId(),
                     order.getId(),
                     "PAID");
         }
 
+        order = orderRepository.save(order);
+
         log.info("Payment status updated for order {} to {}", orderId, newStatus);
         return orderMapper.toDTO(order);
     }
-
     @Override
     public OrderResponseDTO updateTracking(
             String orderId,
