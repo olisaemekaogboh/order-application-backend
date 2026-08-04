@@ -98,108 +98,152 @@ public class OrderEventListener {
         }
 
         // Handle specific status transitions
-        switch (newStatus) {
-            case ASSIGNED:
-                handleOrderAssigned(order);
-                break;
-            case PICKED_UP:
-                handleOrderPickedUp(order);
-                break;
-            case IN_TRANSIT:
-                handleOrderInTransit(order);
-                break;
-            case DELIVERED:
-                handleOrderDelivered(order);
-                break;
-            case CANCELLED:
-                handleOrderCancelled(order);
-                break;
+        try {
+            switch (newStatus) {
+                case DISPATCH:
+                    handleOrderAssigned(order);
+                    break;
+                case PICKED_UP:
+                    handleOrderPickedUp(order);
+                    break;
+                case IN_TRANSIT:
+                    handleOrderInTransit(order);
+                    break;
+                case DELIVERED:
+                    handleOrderDelivered(order);
+                    break;
+                case CANCELLED:
+                    handleOrderCancelled(order);
+                    break;
+            }
+        } catch (Exception e) {
+            // Log but don't throw - prevents transaction rollback
+            log.error("Error handling order status transition for order {}: {}",
+                    order.getOrderNumber(), e.getMessage(), e);
         }
     }
 
     private void handleOrderAssigned(Order order) {
-        if (order.getDriver() != null) {
-            // Notify driver
-            createNotification(
-                    order.getDriver().getId(),
-                    "New Order Assigned",
-                    "You have been assigned to order " + order.getOrderNumber(),
-                    NotificationType.ORDER_UPDATE,
-                    order.getId()
-            );
+        try {
+            log.info("Handling order assigned for order: {}", order.getOrderNumber());
 
-            // Send SMS to driver
-            if (order.getDriver().getPhoneNumber() != null) {
-                smsService.sendDriverAssignmentSms(
-                        order.getDriver().getPhoneNumber(),
-                        order.getOrderNumber(),
-                        "Order assigned to you",
-                        ""
+            // Check if driver is assigned before trying to notify
+            if (order.getDriver() != null) {
+                log.info("Driver assigned: {}", order.getDriver().getId());
+
+                // Notify driver
+                createNotification(
+                        order.getDriver().getId(),
+                        "New Order Assigned",
+                        "You have been assigned to order " + order.getOrderNumber(),
+                        NotificationType.ORDER_UPDATE,
+                        order.getId()
                 );
+
+                // Send SMS to driver
+                if (order.getDriver().getPhoneNumber() != null) {
+                    try {
+                        smsService.sendDriverAssignmentSms(
+                                order.getDriver().getPhoneNumber(),
+                                order.getOrderNumber(),
+                                "Order assigned to you",
+                                ""
+                        );
+                    } catch (Exception e) {
+                        log.warn("Failed to send SMS to driver: {}", e.getMessage());
+                    }
+                }
+            } else {
+                log.info("No driver assigned to order: {}", order.getOrderNumber());
             }
+
+            // TODO: Add tracking logic here if needed
+            // But don't throw exceptions that would rollback the transaction
+
+        } catch (Exception e) {
+            log.error("Error in handleOrderAssigned for order {}: {}",
+                    order.getOrderNumber(), e.getMessage(), e);
+            // Don't rethrow - prevents transaction rollback
         }
     }
 
     private void handleOrderPickedUp(Order order) {
         log.info("Order picked up: {}", order.getOrderNumber());
+        // Add any pickup-specific logic here
     }
 
     private void handleOrderInTransit(Order order) {
         log.info("Order in transit: {}", order.getOrderNumber());
+        // Add any in-transit logic here
     }
 
     private void handleOrderDelivered(Order order) {
         log.info("Order delivered: {}", order.getOrderNumber());
 
-        // Create delivery notification
-        createNotification(
-                order.getUser().getId(),
-                "Order Delivered",
-                "Your order " + order.getOrderNumber() + " has been delivered successfully.",
-                NotificationType.ORDER_UPDATE,
-                order.getId()
-        );
+        try {
+            // Create delivery notification
+            createNotification(
+                    order.getUser().getId(),
+                    "Order Delivered",
+                    "Your order " + order.getOrderNumber() + " has been delivered successfully.",
+                    NotificationType.ORDER_UPDATE,
+                    order.getId()
+            );
 
-        // Send delivery confirmation
-        smsService.sendDeliveryConfirmationSms(
-                order.getUser().getPhoneNumber(),
-                order.getOrderNumber()
-        );
-
-        // Update driver rating if needed
-        // This would be triggered separately
+            // Send delivery confirmation
+            if (order.getUser().getPhoneNumber() != null) {
+                smsService.sendDeliveryConfirmationSms(
+                        order.getUser().getPhoneNumber(),
+                        order.getOrderNumber()
+                );
+            }
+        } catch (Exception e) {
+            log.error("Error handling order delivered for order {}: {}",
+                    order.getOrderNumber(), e.getMessage(), e);
+        }
     }
 
     private void handleOrderCancelled(Order order) {
         log.info("Order cancelled: {}", order.getOrderNumber());
 
-        // Notify driver if assigned
-        if (order.getDriver() != null) {
-            createNotification(
-                    order.getDriver().getId(),
-                    "Order Cancelled",
-                    "Order " + order.getOrderNumber() + " has been cancelled.",
-                    NotificationType.ORDER_UPDATE,
-                    order.getId()
-            );
+        try {
+            // Notify driver if assigned
+            if (order.getDriver() != null) {
+                createNotification(
+                        order.getDriver().getId(),
+                        "Order Cancelled",
+                        "Order " + order.getOrderNumber() + " has been cancelled.",
+                        NotificationType.ORDER_UPDATE,
+                        order.getId()
+                );
+            }
+        } catch (Exception e) {
+            log.error("Error handling order cancelled for order {}: {}",
+                    order.getOrderNumber(), e.getMessage(), e);
         }
     }
 
     private void createNotification(String userId, String title, String message,
                                     NotificationType type, String relatedEntityId) {
-        Notification notification = new Notification();
-        notification.setUser(new User()); // Need to fetch user entity
-        User user = new User();
-        user.setId(userId);
-        notification.setUser(user);
-        notification.setTitle(title);
-        notification.setMessage(message);
-        notification.setType(type);
-        notification.setRelatedEntityId(relatedEntityId);
-        notification.setRelatedEntityType("ORDER");
-        notification.setCreatedAt(LocalDateTime.now());
+        try {
+            Notification notification = new Notification();
+            User user = new User();
+            user.setId(userId);
+            notification.setUser(user);
+            notification.setTitle(title);
+            notification.setMessage(message);
+            notification.setType(type);
+            notification.setRelatedEntityId(relatedEntityId);
+            notification.setRelatedEntityType("ORDER");
+            notification.setCreatedAt(LocalDateTime.now());
+            // Set version to avoid null constraint
+            notification.setVersion(0L);
 
-        notificationRepository.save(notification);
+            notificationRepository.save(notification);
+        } catch (Exception e) {
+            log.error("Failed to create notification: {}", e.getMessage());
+            // Don't throw - prevents transaction rollback
+        }
     }
 
     private String buildOrderDetailsEmail(Order order) {

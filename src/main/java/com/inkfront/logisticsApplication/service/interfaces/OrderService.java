@@ -1,5 +1,6 @@
 package com.inkfront.logisticsApplication.service.interfaces;
 
+import com.inkfront.logisticsApplication.domain.enums.OrderStatus;
 import com.inkfront.logisticsApplication.dto.request.order.*;
 import com.inkfront.logisticsApplication.dto.response.common.PaginatedResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.order.OrderResponseDTO;
@@ -42,4 +43,8 @@ public interface OrderService {
     OrderResponseDTO updatePaymentStatus(String orderId, PaymentStatusUpdateRequestDTO request);
 
     OrderResponseDTO updateTracking(String orderId, TrackingUpdateRequestDTO request);
+
+    // Add to the interface
+    List<OrderResponseDTO> getOrdersByStatus(OrderStatus status);
+    OrderResponseDTO updateOrderStatus(String orderId, OrderStatus status, String userId);
 }

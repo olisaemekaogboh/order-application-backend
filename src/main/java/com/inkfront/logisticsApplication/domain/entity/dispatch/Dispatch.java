@@ -59,6 +59,10 @@ public class Dispatch extends BaseEntity {
     @Column(name = "failure_reason")
     private String failureReason;
 
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version = 0L;
+
     @Column(name = "notes")
     private String notes;
 

@@ -23,11 +23,9 @@ public class DispatchAnalyticsServiceImpl implements DispatchAnalyticsService {
     @Override
     public DispatchAnalyticsDTO getAnalytics() {
         long total = dispatchRepository.count();
+
+        // Use only the statuses that exist in DispatchStatus enum
         long pending = dispatchRepository.countByStatus(DispatchStatus.PENDING);
-        long searchingDriver = dispatchRepository.countByStatus(DispatchStatus.SEARCHING_DRIVER);
-        long searchingVehicle = dispatchRepository.countByStatus(DispatchStatus.SEARCHING_VEHICLE);
-        long driverAssigned = dispatchRepository.countByStatus(DispatchStatus.DRIVER_ASSIGNED);
-        long vehicleAssigned = dispatchRepository.countByStatus(DispatchStatus.VEHICLE_ASSIGNED);
         long waitingAcceptance = dispatchRepository.countByStatus(DispatchStatus.WAITING_DRIVER_ACCEPTANCE);
         long accepted = dispatchRepository.countByStatus(DispatchStatus.DRIVER_ACCEPTED);
         long enRoute = dispatchRepository.countByStatus(DispatchStatus.EN_ROUTE_PICKUP);
@@ -37,18 +35,17 @@ public class DispatchAnalyticsServiceImpl implements DispatchAnalyticsService {
         long failed = dispatchRepository.countByStatus(DispatchStatus.FAILED);
         long cancelled = dispatchRepository.countByStatus(DispatchStatus.CANCELLED);
 
+        // Calculate assigned as sum of active statuses
+        long assigned = waitingAcceptance + accepted + enRoute + pickup + inTransit;
+
         Map<String, Long> byStatus = new HashMap<>();
         byStatus.put("PENDING", pending);
-        byStatus.put("SEARCHING_DRIVER", searchingDriver);
-        byStatus.put("SEARCHING_VEHICLE", searchingVehicle);
-        byStatus.put("DRIVER_ASSIGNED", driverAssigned);
-        byStatus.put("VEHICLE_ASSIGNED", vehicleAssigned);
-        byStatus.put("WAITING_ACCEPTANCE", waitingAcceptance);
-        byStatus.put("ACCEPTED", accepted);
-        byStatus.put("EN_ROUTE", enRoute);
+        byStatus.put("WAITING_DRIVER_ACCEPTANCE", waitingAcceptance);
+        byStatus.put("DRIVER_ACCEPTED", accepted);
+        byStatus.put("EN_ROUTE_PICKUP", enRoute);
         byStatus.put("PICKUP_COMPLETED", pickup);
-        byStatus.put("IN_TRANSIT", inTransit);
-        byStatus.put("COMPLETED", completed);
+        byStatus.put("DELIVERY_IN_PROGRESS", inTransit);
+        byStatus.put("DELIVERED", completed);
         byStatus.put("FAILED", failed);
         byStatus.put("CANCELLED", cancelled);
 
@@ -59,7 +56,7 @@ public class DispatchAnalyticsServiceImpl implements DispatchAnalyticsService {
         DispatchAnalyticsDTO dto = new DispatchAnalyticsDTO();
         dto.setTotalDispatches(total);
         dto.setPending(pending);
-        dto.setAssigned(driverAssigned + vehicleAssigned);
+        dto.setAssigned(assigned);
         dto.setAccepted(accepted);
         dto.setCompleted(completed);
         dto.setCancelled(cancelled);
@@ -85,8 +82,7 @@ public class DispatchAnalyticsServiceImpl implements DispatchAnalyticsService {
 
     @Override
     public double getDriverAcceptanceRate() {
-        long totalAssigned = dispatchRepository.countByStatus(DispatchStatus.DRIVER_ASSIGNED) +
-                dispatchRepository.countByStatus(DispatchStatus.WAITING_DRIVER_ACCEPTANCE) +
+        long totalAssigned = dispatchRepository.countByStatus(DispatchStatus.WAITING_DRIVER_ACCEPTANCE) +
                 dispatchRepository.countByStatus(DispatchStatus.DRIVER_ACCEPTED);
         long accepted = dispatchRepository.countByStatus(DispatchStatus.DRIVER_ACCEPTED);
         return totalAssigned > 0 ? (double) accepted / totalAssigned * 100 : 0.0;

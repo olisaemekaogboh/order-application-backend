@@ -32,6 +32,17 @@ public class DispatchAssignmentServiceImpl implements DispatchAssignmentService 
     private final VehicleRepository vehicleRepository;
     private final OrderRepository orderRepository;
 
+    /**
+     * List of statuses that indicate a driver is actively on a dispatch
+     */
+    private static final List<DispatchStatus> ACTIVE_DISPATCH_STATUSES = List.of(
+            DispatchStatus.WAITING_DRIVER_ACCEPTANCE,
+            DispatchStatus.DRIVER_ACCEPTED,
+            DispatchStatus.EN_ROUTE_PICKUP,
+            DispatchStatus.PICKUP_COMPLETED,
+            DispatchStatus.DELIVERY_IN_PROGRESS
+    );
+
     @Override
     public List<Driver> findAvailableDriversForDispatch(String orderId) {
         List<Driver> availableDrivers = driverRepository.findByAvailableTrueAndVerifiedTrue();
@@ -39,9 +50,7 @@ public class DispatchAssignmentServiceImpl implements DispatchAssignmentService 
         return availableDrivers.stream()
                 .filter(driver -> !dispatchRepository.existsByDriverIdAndStatusIn(
                         driver.getId(),
-                        List.of(DispatchStatus.DRIVER_ASSIGNED, DispatchStatus.WAITING_DRIVER_ACCEPTANCE,
-                                DispatchStatus.DRIVER_ACCEPTED, DispatchStatus.EN_ROUTE_PICKUP,
-                                DispatchStatus.PICKUP_COMPLETED, DispatchStatus.DELIVERY_IN_PROGRESS)))
+                        ACTIVE_DISPATCH_STATUSES))
                 .collect(Collectors.toList());
     }
 
@@ -51,9 +60,7 @@ public class DispatchAssignmentServiceImpl implements DispatchAssignmentService 
                 .stream()
                 .filter(vehicle -> !dispatchRepository.existsByVehicleIdAndStatusIn(
                         vehicle.getId(),
-                        List.of(DispatchStatus.VEHICLE_ASSIGNED, DispatchStatus.WAITING_DRIVER_ACCEPTANCE,
-                                DispatchStatus.DRIVER_ACCEPTED, DispatchStatus.EN_ROUTE_PICKUP,
-                                DispatchStatus.PICKUP_COMPLETED, DispatchStatus.DELIVERY_IN_PROGRESS)))
+                        ACTIVE_DISPATCH_STATUSES))
                 .collect(Collectors.toList());
     }
 
@@ -96,7 +103,7 @@ public class DispatchAssignmentServiceImpl implements DispatchAssignmentService 
             Driver bestDriver = assignBestDriver(dispatch.getOrder().getId());
             if (bestDriver != null) {
                 dispatch.setDriver(bestDriver);
-                dispatch.setDriverId(bestDriver.getId());
+                // driverId is a read-only field, managed by the relationship
                 result.setDriverId(bestDriver.getId());
                 result.setDriverName(bestDriver.getName());
             } else {
@@ -107,7 +114,7 @@ public class DispatchAssignmentServiceImpl implements DispatchAssignmentService 
             Vehicle bestVehicle = assignBestVehicle(dispatch.getOrder().getId());
             if (bestVehicle != null) {
                 dispatch.setVehicle(bestVehicle);
-                dispatch.setVehicleId(bestVehicle.getId());
+                // vehicleId is a read-only field, managed by the relationship
                 result.setVehicleId(bestVehicle.getId());
                 result.setVehicleNumber(bestVehicle.getVehicleNumber());
             } else {
@@ -115,7 +122,8 @@ public class DispatchAssignmentServiceImpl implements DispatchAssignmentService 
                 return result;
             }
 
-            dispatch.setStatus(DispatchStatus.DRIVER_ASSIGNED);
+            // ✅ FIX: Use WAITING_DRIVER_ACCEPTANCE instead of DRIVER_ASSIGNED
+            dispatch.setStatus(DispatchStatus.WAITING_DRIVER_ACCEPTANCE);
             dispatch.setAssignedAt(java.time.LocalDateTime.now());
 
             result.setSuccess(true);
@@ -135,9 +143,7 @@ public class DispatchAssignmentServiceImpl implements DispatchAssignmentService 
         if (!driver.getAvailable()) return false;
         return !dispatchRepository.existsByDriverIdAndStatusIn(
                 driver.getId(),
-                List.of(DispatchStatus.DRIVER_ASSIGNED, DispatchStatus.WAITING_DRIVER_ACCEPTANCE,
-                        DispatchStatus.DRIVER_ACCEPTED, DispatchStatus.EN_ROUTE_PICKUP,
-                        DispatchStatus.PICKUP_COMPLETED, DispatchStatus.DELIVERY_IN_PROGRESS));
+                ACTIVE_DISPATCH_STATUSES);
     }
 
     @Override
@@ -146,9 +152,7 @@ public class DispatchAssignmentServiceImpl implements DispatchAssignmentService 
         if (!vehicle.isAvailable()) return false;
         return !dispatchRepository.existsByVehicleIdAndStatusIn(
                 vehicle.getId(),
-                List.of(DispatchStatus.VEHICLE_ASSIGNED, DispatchStatus.WAITING_DRIVER_ACCEPTANCE,
-                        DispatchStatus.DRIVER_ACCEPTED, DispatchStatus.EN_ROUTE_PICKUP,
-                        DispatchStatus.PICKUP_COMPLETED, DispatchStatus.DELIVERY_IN_PROGRESS));
+                ACTIVE_DISPATCH_STATUSES);
     }
 
     @Override

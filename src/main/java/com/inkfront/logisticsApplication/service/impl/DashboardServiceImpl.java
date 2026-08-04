@@ -61,7 +61,7 @@ public class DashboardServiceImpl implements DashboardService {
 
         dto.setPendingOrders(orderRepository.countByStatus(OrderStatus.PENDING));
 
-        dto.setAssignedOrders(orderRepository.countByStatus(OrderStatus.ASSIGNED));
+        dto.setAssignedOrders(orderRepository.countByStatus(OrderStatus.DISPATCH));
 
         dto.setInTransitOrders(orderRepository.countByStatus(OrderStatus.IN_TRANSIT));
 

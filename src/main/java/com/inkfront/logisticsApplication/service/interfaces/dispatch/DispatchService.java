@@ -8,6 +8,9 @@ public interface DispatchService {
 
     DispatchResponseDTO createDispatch(DispatchRequestDTO request, String userId);
 
+    // NEW: Manual assign with driver + vehicle + priority + notes
+    DispatchResponseDTO manualAssignDispatch(ManualAssignDispatchRequestDTO request, String userId);
+
     DispatchResponseDTO assignDriver(String dispatchId, AssignDriverRequestDTO request, String userId);
 
     DispatchResponseDTO assignVehicle(String dispatchId, AssignVehicleRequestDTO request, String userId);

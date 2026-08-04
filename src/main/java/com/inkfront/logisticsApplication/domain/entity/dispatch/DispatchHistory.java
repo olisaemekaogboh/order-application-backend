@@ -34,4 +34,10 @@ public class DispatchHistory extends BaseEntity {
 
     @Column(name = "reason")
     private String reason;
+
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version = 0L;
+
+
 }

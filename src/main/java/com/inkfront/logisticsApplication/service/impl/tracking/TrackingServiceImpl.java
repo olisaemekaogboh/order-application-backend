@@ -7,6 +7,7 @@ import com.inkfront.logisticsApplication.domain.entity.tracking.TrackingEvent;
 import com.inkfront.logisticsApplication.domain.entity.tracking.TrackingLocation;
 import com.inkfront.logisticsApplication.domain.entity.tracking.TrackingSession;
 import com.inkfront.logisticsApplication.domain.enums.TrackingStatus;
+import com.inkfront.logisticsApplication.domain.enums.UserRole;
 import com.inkfront.logisticsApplication.dto.request.tracking.*;
 import com.inkfront.logisticsApplication.dto.response.common.PaginatedResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.tracking.*;
@@ -45,6 +46,7 @@ import org.springframework.util.StringUtils;
 import java.time.LocalDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -84,7 +86,27 @@ public class TrackingServiceImpl implements TrackingService {
 
         // Validate order
         Order order = trackingValidator.validateOrder(request.getOrderId());
-        if (!order.getUser().getId().equals(userId)) {
+
+        // Check if user is admin - handle enum properly
+        boolean isAdmin = false;
+        try {
+            Optional<User> userOpt = userRepository.findById(userId);
+            if (userOpt.isPresent()) {
+                User user = userOpt.get();
+                UserRole role = user.getRole();
+                log.info("User role: {}", role);
+                // Check if role is ADMIN - UserRole is an enum
+                isAdmin = UserRole.ADMIN.equals(role);
+            }
+        } catch (Exception e) {
+            log.warn("Could not check admin status for user {}: {}", userId, e.getMessage());
+        }
+
+        log.info("Is admin: {}, User ID: {}, Order Owner: {}", isAdmin, userId, order.getUser().getId());
+
+        // Allow admin or the order owner to start tracking
+        if (!isAdmin && !order.getUser().getId().equals(userId)) {
+            log.warn("User {} does not own order {} and is not admin", userId, request.getOrderId());
             throw new AccessDeniedException("You do not own this order");
         }
 
@@ -130,6 +152,7 @@ public class TrackingServiceImpl implements TrackingService {
         log.info("Tracking started with ID: {}", session.getId());
         return trackingMapper.toResponseDTO(session);
     }
+
 
     @Override
     public TrackingSessionResponseDTO updateLocation(LocationUpdateRequestDTO request, String userId) {

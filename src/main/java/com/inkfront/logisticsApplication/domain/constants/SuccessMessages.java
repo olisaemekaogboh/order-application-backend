@@ -61,10 +61,12 @@ public class SuccessMessages {
     public static final String VEHICLE_ASSIGNED = "Vehicle assigned successfully";
     public static final String MAINTENANCE_SCHEDULED = "Maintenance scheduled successfully";
     public static final String INSPECTION_SCHEDULED = "Inspection scheduled successfully";
-    public static final String DISPATCH_CREATED = "Dispatch created successfully";
-    public static final String DISPATCH_UPDATED = "Dispatch updated successfully";
-    public static final String DISPATCH_CANCELLED = "Dispatch cancelled successfully";
+    public static final String DISPATCH_ASSIGNED = "Dispatch assigned successfully";
     public static final String DISPATCH_COMPLETED = "Dispatch completed successfully";
+    public static final String DISPATCH_CANCELLED = "Dispatch cancelled successfully";
+    public static final String DISPATCH_REASSIGNED = "Dispatch reassigned successfully";
+
+    public static final String ORDER_READY_FOR_DISPATCH = "Order is ready for dispatch";
     public static final String REVIEW_CREATED = "Review created successfully";
     public static final String REVIEW_UPDATED = "Review updated successfully";
     public static final String REVIEW_DELETED = "Review deleted successfully";

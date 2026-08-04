@@ -1,14 +1,11 @@
 package com.inkfront.logisticsApplication.service.impl.dispatch;
 
-import com.inkfront.logisticsApplication.domain.entity.Driver;
 import com.inkfront.logisticsApplication.domain.entity.Order;
 import com.inkfront.logisticsApplication.domain.entity.dispatch.Dispatch;
 import com.inkfront.logisticsApplication.domain.entity.dispatch.DispatchHistory;
-import com.inkfront.logisticsApplication.domain.entity.vehicle.Vehicle;
 import com.inkfront.logisticsApplication.domain.enums.DispatchStatus;
 import com.inkfront.logisticsApplication.domain.enums.OrderStatus;
 import com.inkfront.logisticsApplication.dto.request.dispatch.*;
-import com.inkfront.logisticsApplication.dto.request.tracking.StartTrackingRequestDTO;
 import com.inkfront.logisticsApplication.dto.response.common.PaginatedResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.dispatch.*;
 import com.inkfront.logisticsApplication.events.publisher.DispatchEventPublisher;
@@ -20,7 +17,6 @@ import com.inkfront.logisticsApplication.repository.dispatch.DispatchHistoryRepo
 import com.inkfront.logisticsApplication.repository.dispatch.DispatchRepository;
 import com.inkfront.logisticsApplication.service.interfaces.AuditService;
 import com.inkfront.logisticsApplication.service.interfaces.dispatch.*;
-import com.inkfront.logisticsApplication.service.interfaces.tracking.TrackingService;
 import com.inkfront.logisticsApplication.validator.dispatch.DispatchStateValidator;
 import com.inkfront.logisticsApplication.validator.dispatch.DispatchValidator;
 import lombok.RequiredArgsConstructor;
@@ -34,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -48,12 +45,12 @@ public class DispatchServiceImpl implements DispatchService {
     private final DispatchMapper dispatchMapper;
     private final DispatchValidator dispatchValidator;
     private final DispatchStateValidator stateValidator;
-    private final DispatchAssignmentService assignmentService;
+    private final DispatchAssignmentOrchestrator assignmentOrchestrator;
     private final DispatchQueueService queueService;
+    private final DispatchAnalyticsService analyticsService;
     private final DispatchEventPublisher eventPublisher;
     private final DispatchNotificationService notificationService;
     private final AuditService auditService;
-    private final TrackingService trackingService;
 
     @Override
     public DispatchResponseDTO createDispatch(DispatchRequestDTO request, String userId) {
@@ -62,14 +59,65 @@ public class DispatchServiceImpl implements DispatchService {
         Order order = orderRepository.findById(request.getOrderId())
                 .orElseThrow(() -> new IllegalArgumentException("Order not found"));
 
-        dispatchValidator.validateOrderNotDispatched(order.getId());
+        // Validate order is ready for dispatch
+        if (order.getStatus() != OrderStatus.READY_FOR_DISPATCH) {
+            throw new DispatchStateException("Order must be in READY_FOR_DISPATCH status");
+        }
 
+        // Check if active dispatch already exists (ignore cancelled ones)
+        Optional<Dispatch> existingDispatch = dispatchRepository.findByOrderId(order.getId());
+        if (existingDispatch.isPresent()) {
+            Dispatch dispatch = existingDispatch.get();
+            // If cancelled, we can reuse it
+            if (dispatch.getStatus() == DispatchStatus.CANCELLED) {
+                log.info("Reusing cancelled dispatch: {}", dispatch.getId());
+                // Reset the dispatch
+                dispatch.setStatus(DispatchStatus.PENDING);
+                dispatch.setDriver(null);
+                dispatch.setVehicle(null);
+                dispatch.setAssignedAt(null);
+                dispatch.setAcceptedAt(null);
+                dispatch.setCompletedAt(null);
+                dispatch.setCancelledAt(null);
+                dispatch.setFailureReason(null);
+                dispatch.setPriority(request.getPriority() != null ? request.getPriority() : 0);
+                dispatch.setScheduledTime(request.getScheduledTime());
+                dispatch.setNotes(request.getNotes());
+                dispatch.setVersion(dispatch.getVersion() + 1);
+
+                dispatch = dispatchRepository.save(dispatch);
+
+                logDispatchHistory(dispatch, DispatchStatus.CANCELLED, DispatchStatus.PENDING,
+                        userId, "Reusing cancelled dispatch for new assignment");
+
+                // Auto-assign if requested
+                if (request.isAutoAssign()) {
+                    DispatchAssignmentResult result = assignmentOrchestrator.assignDispatch(
+                            dispatch, null, null, userId, request.getNotes());
+                    if (result.isSuccess()) {
+                        dispatch.setStatus(DispatchStatus.WAITING_DRIVER_ACCEPTANCE);
+                        dispatch.setAssignedAt(LocalDateTime.now());
+                        dispatch.setVersion(dispatch.getVersion() + 1);
+                        dispatch = dispatchRepository.save(dispatch);
+                        logDispatchHistory(dispatch, DispatchStatus.PENDING, DispatchStatus.WAITING_DRIVER_ACCEPTANCE,
+                                userId, "Auto-assigned to driver and vehicle after reuse");
+                    }
+                }
+
+                queueService.addToQueue(dispatch);
+                return dispatchMapper.toResponseDTO(dispatch);
+            }
+            throw new DispatchStateException("Active dispatch already exists for this order");
+        }
+
+        // Create new dispatch as before
         Dispatch dispatch = new Dispatch();
         dispatch.setOrder(order);
         dispatch.setStatus(DispatchStatus.PENDING);
         dispatch.setPriority(request.getPriority() != null ? request.getPriority() : 0);
         dispatch.setScheduledTime(request.getScheduledTime());
         dispatch.setNotes(request.getNotes());
+        dispatch.setVersion(0L);
 
         dispatch = dispatchRepository.save(dispatch);
 
@@ -81,39 +129,161 @@ public class DispatchServiceImpl implements DispatchService {
         notificationService.notifyDispatchCreated(dispatch);
         eventPublisher.publishDispatchCreated(dispatch);
 
+        // Auto-assign if requested
         if (request.isAutoAssign()) {
-            assignBestDriverAndVehicle(dispatch);
+            DispatchAssignmentResult result = assignmentOrchestrator.assignDispatch(
+                    dispatch,
+                    null,
+                    null,
+                    userId,
+                    request.getNotes()
+            );
+            if (result.isSuccess()) {
+                dispatch.setStatus(DispatchStatus.WAITING_DRIVER_ACCEPTANCE);
+                dispatch.setAssignedAt(LocalDateTime.now());
+                dispatch.setVersion(dispatch.getVersion() + 1);
+                dispatch = dispatchRepository.save(dispatch);
+                logDispatchHistory(dispatch, DispatchStatus.PENDING, DispatchStatus.WAITING_DRIVER_ACCEPTANCE,
+                        userId, "Auto-assigned to driver and vehicle");
+                return dispatchMapper.toResponseDTO(dispatch);
+            }
         }
+
+        // Add to queue for manual assignment
+        queueService.addToQueue(dispatch);
 
         return dispatchMapper.toResponseDTO(dispatch);
     }
+    @Override
+    public DispatchResponseDTO manualAssignDispatch(ManualAssignDispatchRequestDTO request, String userId) {
+        log.info("Manual assign dispatch for order: {}", request.getOrderId());
 
+        // 1. Validate order exists
+        Order order = orderRepository.findById(request.getOrderId())
+                .orElseThrow(() -> new IllegalArgumentException("Order not found"));
+
+        // 2. Check if order is ready for dispatch
+        if (order.getStatus() != OrderStatus.READY_FOR_DISPATCH) {
+            throw new DispatchStateException("Order must be in READY_FOR_DISPATCH status");
+        }
+
+        // 3. Get existing dispatch or create new one
+        Dispatch dispatch = dispatchRepository.findByOrderId(request.getOrderId()).orElse(null);
+
+        if (dispatch == null) {
+            // Create new dispatch
+            log.info("Creating new dispatch for order: {}", request.getOrderId());
+            dispatch = new Dispatch();
+            dispatch.setOrder(order);
+            dispatch.setStatus(DispatchStatus.PENDING);
+            dispatch.setPriority(request.getPriority() != null ? request.getPriority() : 0);
+            dispatch.setScheduledTime(request.getScheduledTime());
+            dispatch.setNotes(request.getNotes());
+            dispatch.setVersion(0L);
+            dispatch = dispatchRepository.save(dispatch);
+
+            logDispatchHistory(dispatch, null, DispatchStatus.PENDING, userId,
+                    "Dispatch created for manual assignment");
+        } else if (dispatch.getStatus() == DispatchStatus.CANCELLED) {
+            // Reuse cancelled dispatch - reset it
+            log.info("Reusing cancelled dispatch: {} for order: {}", dispatch.getId(), request.getOrderId());
+            dispatch.setStatus(DispatchStatus.PENDING);
+            dispatch.setPriority(request.getPriority() != null ? request.getPriority() : 0);
+            dispatch.setScheduledTime(request.getScheduledTime());
+            dispatch.setNotes(request.getNotes());
+            dispatch.setDriver(null);
+            dispatch.setVehicle(null);
+            dispatch.setAssignedAt(null);
+            dispatch.setAcceptedAt(null);
+            dispatch.setCompletedAt(null);
+            dispatch.setCancelledAt(null);
+            dispatch.setRejectedAt(null);
+            dispatch.setFailureReason(null);
+            dispatch.setVersion(dispatch.getVersion() + 1);
+            dispatch = dispatchRepository.save(dispatch);
+
+            logDispatchHistory(dispatch, DispatchStatus.CANCELLED, DispatchStatus.PENDING, userId,
+                    "Reusing cancelled dispatch for new assignment");
+        } else if (dispatch.getStatus() != DispatchStatus.PENDING) {
+            // Any other status - throw exception
+            throw new DispatchStateException("Dispatch must be in PENDING status to assign. Current status: " + dispatch.getStatus());
+        }
+
+        // 4. Perform assignment with both driver and vehicle
+        DispatchAssignmentResult result = assignmentOrchestrator.assignDispatch(
+                dispatch,
+                request.getDriverId(),
+                request.getVehicleId(),
+                userId,
+                request.getNotes()
+        );
+
+        if (!result.isSuccess()) {
+            throw new DispatchStateException("Assignment failed: " + result.getMessage());
+        }
+
+        // 5. Update dispatch status to WAITING_DRIVER_ACCEPTANCE
+        dispatch.setStatus(DispatchStatus.WAITING_DRIVER_ACCEPTANCE);
+        dispatch.setAssignedAt(LocalDateTime.now());
+        dispatch.setVersion(dispatch.getVersion() + 1);
+        dispatch = dispatchRepository.save(dispatch);
+
+        // 6. Log history
+        logDispatchHistory(dispatch, DispatchStatus.PENDING, DispatchStatus.WAITING_DRIVER_ACCEPTANCE,
+                userId, "Dispatch manually assigned with driver: " + request.getDriverId() +
+                        " and vehicle: " + request.getVehicleId());
+
+        // 7. Update order status to DISPATCH
+        order.setStatus(OrderStatus.DISPATCH);
+        orderRepository.save(order);
+
+        // 8. Audit
+        auditService.logAction(userId, "DISPATCH_MANUALLY_ASSIGNED", "Dispatch", dispatch.getId(),
+                "Manually assigned driver: " + request.getDriverId() + " and vehicle: " + request.getVehicleId());
+
+        // 9. Notify
+        notificationService.notifyDispatchAssigned(dispatch);
+        eventPublisher.publishDispatchAssigned(dispatch);
+
+        return dispatchMapper.toResponseDTO(dispatch);
+    }
     @Override
     public DispatchResponseDTO assignDriver(String dispatchId, AssignDriverRequestDTO request, String userId) {
         log.info("Assigning driver to dispatch: {}", dispatchId);
 
         Dispatch dispatch = findDispatch(dispatchId);
-        stateValidator.validateTransition(dispatch.getStatus(), DispatchStatus.DRIVER_ASSIGNED);
 
-        Driver driver = assignmentService.findAvailableDriversForDispatch(dispatch.getOrder().getId())
-                .stream().filter(d -> d.getId().equals(request.getDriverId())).findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Driver not available"));
+        // Validate state - allow PENDING only
+        if (dispatch.getStatus() != DispatchStatus.PENDING) {
+            throw new DispatchStateException("Dispatch must be in PENDING status to assign driver. Current: " + dispatch.getStatus());
+        }
 
-        dispatch.setDriver(driver);   // relationship handles the foreign key
-        // No need to set driverId – it will be populated automatically
-        dispatch.setStatus(DispatchStatus.DRIVER_ASSIGNED);
+        // Assign driver only
+        DispatchAssignmentResult result = assignmentOrchestrator.assignDispatch(
+                dispatch,
+                request.getDriverId(),
+                dispatch.getVehicle() != null ? dispatch.getVehicle().getId() : null,
+                userId,
+                null
+        );
+
+        if (!result.isSuccess()) {
+            throw new DispatchStateException("Driver assignment failed: " + result.getMessage());
+        }
+
+        // Update status to WAITING_DRIVER_ACCEPTANCE
+        dispatch.setStatus(DispatchStatus.WAITING_DRIVER_ACCEPTANCE);
         dispatch.setAssignedAt(LocalDateTime.now());
-
+        dispatch.setVersion(dispatch.getVersion() + 1);
         dispatch = dispatchRepository.save(dispatch);
 
-        logDispatchHistory(dispatch, DispatchStatus.DRIVER_ASSIGNED, DispatchStatus.DRIVER_ASSIGNED, userId,
-                "Driver assigned: " + driver.getName());
+        logDispatchHistory(dispatch, DispatchStatus.PENDING, DispatchStatus.WAITING_DRIVER_ACCEPTANCE,
+                userId, "Driver assigned to dispatch");
 
-        auditService.logAction(userId, "DISPATCH_DRIVER_ASSIGNED", "Dispatch", dispatch.getId(),
-                "Assigned driver " + driver.getName() + " to dispatch");
+        auditService.logAction(userId, "DRIVER_ASSIGNED_TO_DISPATCH", "Dispatch", dispatch.getId(),
+                "Assigned driver: " + request.getDriverId());
 
-        notificationService.notifyDriverAssigned(dispatch, driver.getName());
-        eventPublisher.publishDispatchAssigned(dispatch);
+        notificationService.notifyDispatchAssigned(dispatch);
 
         return dispatchMapper.toResponseDTO(dispatch);
     }
@@ -123,44 +293,68 @@ public class DispatchServiceImpl implements DispatchService {
         log.info("Assigning vehicle to dispatch: {}", dispatchId);
 
         Dispatch dispatch = findDispatch(dispatchId);
-        stateValidator.validateTransition(dispatch.getStatus(), DispatchStatus.VEHICLE_ASSIGNED);
 
-        Vehicle vehicle = assignmentService.findAvailableVehiclesForDispatch(dispatch.getOrder().getId())
-                .stream().filter(v -> v.getId().equals(request.getVehicleId())).findFirst()
-                .orElseThrow(() -> new IllegalArgumentException("Vehicle not available"));
+        // Validate state - allow PENDING only
+        if (dispatch.getStatus() != DispatchStatus.PENDING) {
+            throw new DispatchStateException("Dispatch must be in PENDING status to assign vehicle. Current: " + dispatch.getStatus());
+        }
 
-        dispatch.setVehicle(vehicle);   // relationship handles the foreign key
-        // No need to set vehicleId – it will be populated automatically
-        dispatch.setStatus(DispatchStatus.VEHICLE_ASSIGNED);
+        // Assign vehicle only
+        DispatchAssignmentResult result = assignmentOrchestrator.assignDispatch(
+                dispatch,
+                dispatch.getDriver() != null ? dispatch.getDriver().getId() : null,
+                request.getVehicleId(),
+                userId,
+                null
+        );
+
+        if (!result.isSuccess()) {
+            throw new DispatchStateException("Vehicle assignment failed: " + result.getMessage());
+        }
+
+        // Update status to WAITING_DRIVER_ACCEPTANCE
+        dispatch.setStatus(DispatchStatus.WAITING_DRIVER_ACCEPTANCE);
         dispatch.setAssignedAt(LocalDateTime.now());
-
+        dispatch.setVersion(dispatch.getVersion() + 1);
         dispatch = dispatchRepository.save(dispatch);
 
-        logDispatchHistory(dispatch, DispatchStatus.VEHICLE_ASSIGNED, DispatchStatus.VEHICLE_ASSIGNED, userId,
-                "Vehicle assigned: " + vehicle.getVehicleNumber());
+        logDispatchHistory(dispatch, DispatchStatus.PENDING, DispatchStatus.WAITING_DRIVER_ACCEPTANCE,
+                userId, "Vehicle assigned to dispatch");
 
-        auditService.logAction(userId, "DISPATCH_VEHICLE_ASSIGNED", "Dispatch", dispatch.getId(),
-                "Assigned vehicle " + vehicle.getVehicleNumber() + " to dispatch");
+        auditService.logAction(userId, "VEHICLE_ASSIGNED_TO_DISPATCH", "Dispatch", dispatch.getId(),
+                "Assigned vehicle: " + request.getVehicleId());
 
-        notificationService.notifyVehicleAssigned(dispatch, vehicle.getVehicleNumber());
-        eventPublisher.publishDispatchAssigned(dispatch);
+        notificationService.notifyDispatchAssigned(dispatch);
 
         return dispatchMapper.toResponseDTO(dispatch);
     }
+
     @Override
     public DispatchResponseDTO acceptDispatch(String dispatchId, String userId) {
         log.info("Accepting dispatch: {}", dispatchId);
 
         Dispatch dispatch = findDispatch(dispatchId);
-        stateValidator.validateTransition(dispatch.getStatus(), DispatchStatus.DRIVER_ACCEPTED);
+        validateTransition(dispatch.getStatus(), DispatchStatus.DRIVER_ACCEPTED);
 
+        // Ensure dispatch has driver assigned
+        if (dispatch.getDriver() == null) {
+            throw new DispatchStateException("Cannot accept dispatch without an assigned driver");
+        }
+
+        DispatchStatus oldStatus = dispatch.getStatus();
         dispatch.setStatus(DispatchStatus.DRIVER_ACCEPTED);
         dispatch.setAcceptedAt(LocalDateTime.now());
+        dispatch.setVersion(dispatch.getVersion() + 1);
+
+        // Update order status
+        Order order = dispatch.getOrder();
+        order.setStatus(OrderStatus.DISPATCH);
+        orderRepository.save(order);
 
         dispatch = dispatchRepository.save(dispatch);
 
-        logDispatchHistory(dispatch, DispatchStatus.DRIVER_ACCEPTED, DispatchStatus.DRIVER_ACCEPTED, userId,
-                "Dispatch accepted");
+        logDispatchHistory(dispatch, oldStatus,
+                DispatchStatus.DRIVER_ACCEPTED, userId, "Dispatch accepted by driver");
 
         auditService.logAction(userId, "DISPATCH_ACCEPTED", "Dispatch", dispatch.getId(),
                 "Dispatch accepted");
@@ -176,16 +370,21 @@ public class DispatchServiceImpl implements DispatchService {
         log.info("Rejecting dispatch: {} reason: {}", dispatchId, reason);
 
         Dispatch dispatch = findDispatch(dispatchId);
-        stateValidator.validateTransition(dispatch.getStatus(), DispatchStatus.DRIVER_REJECTED);
+        validateTransition(dispatch.getStatus(), DispatchStatus.FAILED);
 
-        dispatch.setStatus(DispatchStatus.DRIVER_REJECTED);
+        DispatchStatus oldStatus = dispatch.getStatus();
+
+        // Release resources
+        assignmentOrchestrator.releaseResources(dispatch, userId, reason);
+
+        dispatch.setStatus(DispatchStatus.FAILED);
         dispatch.setRejectedAt(LocalDateTime.now());
         dispatch.setFailureReason(reason);
-
+        dispatch.setVersion(dispatch.getVersion() + 1);
         dispatch = dispatchRepository.save(dispatch);
 
-        logDispatchHistory(dispatch, DispatchStatus.DRIVER_REJECTED, DispatchStatus.DRIVER_REJECTED, userId,
-                "Dispatch rejected: " + reason);
+        logDispatchHistory(dispatch, oldStatus,
+                DispatchStatus.FAILED, userId, "Dispatch rejected: " + reason);
 
         auditService.logAction(userId, "DISPATCH_REJECTED", "Dispatch", dispatch.getId(),
                 "Dispatch rejected: " + reason);
@@ -193,11 +392,17 @@ public class DispatchServiceImpl implements DispatchService {
         notificationService.notifyDispatchRejected(dispatch, reason);
         eventPublisher.publishDispatchRejected(dispatch);
 
+        // Handle retry
         if (dispatch.getRetryCount() < 3) {
             dispatch.setRetryCount(dispatch.getRetryCount() + 1);
             dispatch.setStatus(DispatchStatus.PENDING);
+            dispatch.setDriver(null);
+            dispatch.setVehicle(null);
+            dispatch.setAssignedAt(null);
+            dispatch.setVersion(dispatch.getVersion() + 1);
             dispatchRepository.save(dispatch);
             queueService.retryFailedDispatch(dispatchId);
+            log.info("Retry scheduled for dispatch: {}", dispatchId);
         }
 
         return dispatchMapper.toResponseDTO(dispatch);
@@ -208,43 +413,63 @@ public class DispatchServiceImpl implements DispatchService {
         log.info("Reassigning dispatch: {}", dispatchId);
 
         Dispatch dispatch = findDispatch(dispatchId);
-        stateValidator.validateTransition(dispatch.getStatus(), DispatchStatus.REASSIGNED);
 
-        dispatch.setStatus(DispatchStatus.REASSIGNED);
+        // Validate can reassign
+        if (dispatch.getStatus() != DispatchStatus.FAILED &&
+                dispatch.getStatus() != DispatchStatus.WAITING_DRIVER_ACCEPTANCE) {
+            throw new DispatchStateException("Dispatch must be in FAILED or WAITING_DRIVER_ACCEPTANCE status to reassign");
+        }
+
+        DispatchStatus oldStatus = dispatch.getStatus();
+
+        // Release current resources
+        assignmentOrchestrator.releaseResources(dispatch, userId, "Reassignment");
+
+        // Reset dispatch
+        dispatch.setStatus(DispatchStatus.PENDING);
+        dispatch.setDriver(null);
+        dispatch.setVehicle(null);
+        dispatch.setAssignedAt(null);
+        dispatch.setAcceptedAt(null);
+        dispatch.setRejectedAt(null);
         dispatch.setRetryCount(dispatch.getRetryCount() + 1);
-
+        dispatch.setVersion(dispatch.getVersion() + 1);
         dispatch = dispatchRepository.save(dispatch);
 
-        logDispatchHistory(dispatch, DispatchStatus.REASSIGNED, DispatchStatus.REASSIGNED, userId,
-                "Dispatch reassigned");
+        logDispatchHistory(dispatch, oldStatus, DispatchStatus.PENDING,
+                userId, "Dispatch reassigned, retry count: " + dispatch.getRetryCount());
 
         auditService.logAction(userId, "DISPATCH_REASSIGNED", "Dispatch", dispatch.getId(),
                 "Dispatch reassigned");
 
-        dispatch.setStatus(DispatchStatus.PENDING);
-        dispatch.setDriver(null);
-        dispatch.setVehicle(null);
-        // driverId and vehicleId will be null because they are read‑only and derived from the relationships
-        dispatch.setAssignedAt(null);
-        dispatchRepository.save(dispatch);
+        // Add back to queue
+        queueService.addToQueue(dispatch);
+
+        notificationService.notifyDispatchAssigned(dispatch);
 
         return dispatchMapper.toResponseDTO(dispatch);
     }
+
     @Override
     public DispatchResponseDTO cancelDispatch(String dispatchId, String reason, String userId) {
         log.info("Cancelling dispatch: {} reason: {}", dispatchId, reason);
 
         Dispatch dispatch = findDispatch(dispatchId);
-        stateValidator.validateTransition(dispatch.getStatus(), DispatchStatus.CANCELLED);
+        validateTransition(dispatch.getStatus(), DispatchStatus.CANCELLED);
+
+        DispatchStatus oldStatus = dispatch.getStatus();
+
+        // Release resources
+        assignmentOrchestrator.releaseResources(dispatch, userId, reason);
 
         dispatch.setStatus(DispatchStatus.CANCELLED);
         dispatch.setCancelledAt(LocalDateTime.now());
         dispatch.setFailureReason(reason);
-
+        dispatch.setVersion(dispatch.getVersion() + 1);
         dispatch = dispatchRepository.save(dispatch);
 
-        logDispatchHistory(dispatch, DispatchStatus.CANCELLED, DispatchStatus.CANCELLED, userId,
-                "Dispatch cancelled: " + reason);
+        logDispatchHistory(dispatch, oldStatus, DispatchStatus.CANCELLED,
+                userId, "Dispatch cancelled: " + reason);
 
         auditService.logAction(userId, "DISPATCH_CANCELLED", "Dispatch", dispatch.getId(),
                 "Dispatch cancelled: " + reason);
@@ -256,34 +481,62 @@ public class DispatchServiceImpl implements DispatchService {
     }
 
     @Override
+    @Transactional
     public DispatchResponseDTO completeDispatch(String dispatchId, String userId) {
         log.info("Completing dispatch: {}", dispatchId);
 
         Dispatch dispatch = findDispatch(dispatchId);
-        stateValidator.validateTransition(dispatch.getStatus(), DispatchStatus.DELIVERED);
 
+        // Check if already completed
+        if (dispatch.getStatus() == DispatchStatus.DELIVERED) {
+            throw new DispatchStateException("Dispatch already completed");
+        }
+
+        validateTransition(dispatch.getStatus(), DispatchStatus.DELIVERED);
+
+        DispatchStatus oldStatus = dispatch.getStatus();
+
+        // Update dispatch
         dispatch.setStatus(DispatchStatus.DELIVERED);
         dispatch.setCompletedAt(LocalDateTime.now());
-
+        dispatch.setVersion(dispatch.getVersion() + 1);
         dispatch = dispatchRepository.save(dispatch);
 
-        logDispatchHistory(dispatch, DispatchStatus.DELIVERED, DispatchStatus.DELIVERED, userId,
-                "Dispatch completed");
+        // Release resources - wrap in try-catch to prevent rollback
+        try {
+            assignmentOrchestrator.releaseResources(dispatch, userId, "Delivery completed");
+        } catch (Exception e) {
+            log.error("Error releasing resources: {}", e.getMessage());
+        }
 
-        auditService.logAction(userId, "DISPATCH_COMPLETED", "Dispatch", dispatch.getId(),
-                "Dispatch completed");
+        // Log history
+        try {
+            logDispatchHistory(dispatch, oldStatus, DispatchStatus.DELIVERED,
+                    userId, "Dispatch completed");
+        } catch (Exception e) {
+            log.error("Error logging history: {}", e.getMessage());
+        }
 
-        notificationService.notifyDispatchCompleted(dispatch);
-        eventPublisher.publishDispatchCompleted(dispatch);
+        // Audit
+        try {
+            auditService.logAction(userId, "DISPATCH_COMPLETED", "Dispatch", dispatch.getId(),
+                    "Dispatch completed");
+        } catch (Exception e) {
+            log.error("Error logging audit: {}", e.getMessage());
+        }
 
-        // Update order status
-        Order order = dispatch.getOrder();
-        order.setStatus(OrderStatus.DELIVERED);
-        order.setDeliveryDate(LocalDateTime.now());
-        orderRepository.save(order);
+        // Notifications - wrapped in try-catch to prevent rollback
+        try {
+            notificationService.notifyDispatchCompleted(dispatch);
+        } catch (Exception e) {
+            log.error("Failed to send completion notifications: {}", e.getMessage());
+        }
 
-        // Tracking will be completed automatically when order status changes to DELIVERED
-        // The tracking module listens to order status changes via events
+        try {
+            eventPublisher.publishDispatchCompleted(dispatch);
+        } catch (Exception e) {
+            log.error("Failed to publish completion event: {}", e.getMessage());
+        }
 
         return dispatchMapper.toResponseDTO(dispatch);
     }
@@ -329,8 +582,7 @@ public class DispatchServiceImpl implements DispatchService {
 
     @Override
     public DispatchAnalyticsDTO getDispatchAnalytics() {
-        // delegate to analytics service
-        return new DispatchAnalyticsDTO();
+        return analyticsService.getAnalytics();
     }
 
     // ------------------- Private Helpers -------------------
@@ -340,8 +592,16 @@ public class DispatchServiceImpl implements DispatchService {
                 .orElseThrow(() -> new DispatchNotFoundException("Dispatch not found: " + dispatchId));
     }
 
-    private void logDispatchHistory(Dispatch dispatch, DispatchStatus oldStatus, DispatchStatus newStatus,
-                                    String userId, String reason) {
+    private void validateTransition(DispatchStatus currentStatus, DispatchStatus newStatus) {
+        if (!stateValidator.isValidTransition(currentStatus, newStatus)) {
+            throw new DispatchStateException(
+                    String.format("Invalid status transition from %s to %s", currentStatus, newStatus)
+            );
+        }
+    }
+
+    private void logDispatchHistory(Dispatch dispatch, DispatchStatus oldStatus,
+                                    DispatchStatus newStatus, String userId, String reason) {
         DispatchHistory history = new DispatchHistory();
         history.setDispatch(dispatch);
         history.setPreviousStatus(oldStatus);
@@ -349,34 +609,8 @@ public class DispatchServiceImpl implements DispatchService {
         history.setChangedAt(LocalDateTime.now());
         history.setChangedBy(userId);
         history.setReason(reason);
+        history.setVersion(0L);
         historyRepository.save(history);
-    }
-
-    private void assignBestDriverAndVehicle(Dispatch dispatch) {
-        DispatchAssignmentResult result = assignmentService.assignBestDriverAndVehicle(dispatch);
-        if (result.isSuccess()) {
-            // The assignment service already sets the driver and vehicle relationships
-            dispatchRepository.save(dispatch);
-            notificationService.notifyDriverAssigned(dispatch, result.getDriverName());
-            notificationService.notifyVehicleAssigned(dispatch, result.getVehicleNumber());
-            try {
-                // Start tracking
-                StartTrackingRequestDTO trackingRequest = StartTrackingRequestDTO.builder()
-                        .orderId(dispatch.getOrder().getId())
-                        .driverId(result.getDriverId())
-                        .build();
-                trackingService.startTracking(trackingRequest, "SYSTEM");
-            } catch (Exception e) {
-                log.warn("Could not start tracking for dispatch {}: {}", dispatch.getId(), e.getMessage());
-            }
-            eventPublisher.publishDispatchAssigned(dispatch);
-        } else {
-            log.warn("Automatic assignment failed for dispatch {}: {}", dispatch.getId(), result.getMessage());
-            dispatch.setStatus(DispatchStatus.FAILED);
-            dispatch.setFailureReason(result.getMessage());
-            dispatchRepository.save(dispatch);
-            eventPublisher.publishDispatchRejected(dispatch);
-        }
     }
 
     private PaginatedResponseDTO<DispatchSummaryDTO> toPaginatedResponse(Page<Dispatch> page) {

@@ -10,6 +10,7 @@ import com.inkfront.logisticsApplication.dto.response.common.PaginatedResponseDT
 import com.inkfront.logisticsApplication.dto.response.order.OrderResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.order.OrderTrackingDTO;
 import com.inkfront.logisticsApplication.dto.response.order.PriceCalculationResponseDTO;
+import com.inkfront.logisticsApplication.events.order.OrderReadyForDispatchEvent;
 import com.inkfront.logisticsApplication.exception.BadRequestException;
 import com.inkfront.logisticsApplication.exception.ResourceNotFoundException;
 import com.inkfront.logisticsApplication.mapper.OrderMapper;
@@ -19,16 +20,14 @@ import com.inkfront.logisticsApplication.repository.UserRepository;
 import com.inkfront.logisticsApplication.repository.DriverRepository;
 import com.inkfront.logisticsApplication.repository.PricingConfigRepository;
 import com.inkfront.logisticsApplication.repository.PaymentTransactionRepository;
-import com.inkfront.logisticsApplication.service.interfaces.OrderService;
-import com.inkfront.logisticsApplication.service.interfaces.PricingService;
-import com.inkfront.logisticsApplication.service.interfaces.NotificationService;
-import com.inkfront.logisticsApplication.service.interfaces.DistanceService;
+import com.inkfront.logisticsApplication.service.interfaces.*;
 import com.inkfront.logisticsApplication.util.OrderNumberGenerator;
 import com.inkfront.logisticsApplication.domain.constants.AppConstants;
 import com.inkfront.logisticsApplication.domain.constants.ErrorMessages;
 
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.*;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -56,6 +55,9 @@ public class OrderServiceImpl implements OrderService {
     private final NotificationService notificationService;
     private final DistanceService distanceService;
     private final OrderNumberGenerator orderNumberGenerator;
+    private final ApplicationEventPublisher eventPublisher;
+    private final AuditService auditService;
+
     @Override
     public PriceCalculationResponseDTO calculatePrice(PriceCalculationRequestDTO request) {
         // ... keep existing implementation unchanged
@@ -382,7 +384,7 @@ public class OrderServiceImpl implements OrderService {
             // If driver is assigned, add assignment event
             if (order.getDriver() != null && order.getDriver().getId() != null) {
                 OrderTrackingDTO.TrackingUpdateDTO assigned = new OrderTrackingDTO.TrackingUpdateDTO();
-                assigned.setStatus(OrderStatus.ASSIGNED);
+                assigned.setStatus(OrderStatus.DISPATCH);
                 assigned.setStatusDisplayName("Driver Assigned");
                 assigned.setTimestamp(order.getUpdatedAt());
                 assigned.setDescription("Driver " + order.getDriver().getName() + " assigned to your order");
@@ -471,7 +473,7 @@ public class OrderServiceImpl implements OrderService {
     public long countUserActiveOrders(String userId) {
         return orderRepository.countByUserIdAndStatusIn(
                 userId,
-                List.of(OrderStatus.PENDING, OrderStatus.ASSIGNED, OrderStatus.PICKED_UP, OrderStatus.IN_TRANSIT)
+                List.of(OrderStatus.PENDING, OrderStatus.DISPATCH, OrderStatus.PICKED_UP, OrderStatus.IN_TRANSIT)
         );
     }
 
@@ -503,7 +505,7 @@ public class OrderServiceImpl implements OrderService {
         }
 
         order.setDriver(driver);
-        order.setStatus(OrderStatus.ASSIGNED);
+        order.setStatus(OrderStatus.DISPATCH);
 
         orderRepository.save(order);
 
@@ -536,12 +538,14 @@ public class OrderServiceImpl implements OrderService {
         PaymentStatus newStatus = request.getPaymentStatus();
         order.setPaymentStatus(newStatus);
 
-        // ===== FIX: Update order status when payment becomes PAID =====
+        // If payment becomes PAID, update order status to READY_FOR_DISPATCH
         if (newStatus == PaymentStatus.PAID) {
-            // If order is still PENDING, update to PROCESSING
             if (order.getStatus() == OrderStatus.PENDING) {
-                order.setStatus(OrderStatus.ASSIGNED);
-                log.info("✅ Order {} status changed from PENDING to PROCESSING after payment update", orderId);
+                order.setStatus(OrderStatus.READY_FOR_DISPATCH);
+                log.info("✅ Order {} status changed from PENDING to READY_FOR_DISPATCH after payment", orderId);
+
+                // ✅ FIX: Publish event for dispatch creation
+                eventPublisher.publishEvent(new OrderReadyForDispatchEvent(this, order, order.getUser().getId()));
             }
 
             notificationService.sendPaymentNotification(
@@ -555,6 +559,8 @@ public class OrderServiceImpl implements OrderService {
         log.info("Payment status updated for order {} to {}", orderId, newStatus);
         return orderMapper.toDTO(order);
     }
+
+
     @Override
     public OrderResponseDTO updateTracking(
             String orderId,
@@ -593,30 +599,102 @@ public class OrderServiceImpl implements OrderService {
         );
     }
 
-    private void validateStatusTransition(OrderStatus currentStatus, OrderStatus newStatus) {
-        // Validate status transitions
-        if (currentStatus == OrderStatus.PENDING && newStatus != OrderStatus.ASSIGNED && newStatus != OrderStatus.CANCELLED) {
-            throw new BadRequestException("Pending orders can only be assigned or cancelled");
+
+    @Override
+    public List<OrderResponseDTO> getOrdersByStatus(OrderStatus status) {
+        List<Order> orders = orderRepository.findByStatus(status, Pageable.unpaged()).getContent();
+        return orderMapper.toDTOList(orders);
+    }
+
+    @Override
+    @Transactional
+    public OrderResponseDTO updateOrderStatus(String orderId, OrderStatus status, String userId) {
+        log.info("Updating order {} status to: {}", orderId, status);
+
+        Order order = orderRepository.findById(orderId)
+                .orElseThrow(() -> new ResourceNotFoundException("Order not found: " + orderId));
+
+        OrderStatus oldStatus = order.getStatus();
+
+        // Validate transition
+        validateStatusTransition(oldStatus, status);
+
+        order.setStatus(status);
+
+        // If status is READY_FOR_DISPATCH, publish event
+        if (status == OrderStatus.READY_FOR_DISPATCH) {
+            log.info("Order {} is ready for dispatch, publishing event", orderId);
+            // ✅ FIX: Use publishEvent directly with the event object
+            eventPublisher.publishEvent(new OrderReadyForDispatchEvent(this, order, userId));
         }
 
-        if (currentStatus == OrderStatus.ASSIGNED && newStatus != OrderStatus.PICKED_UP && newStatus != OrderStatus.CANCELLED) {
-            throw new BadRequestException("Assigned orders can only be picked up or cancelled");
+        order = orderRepository.save(order);
+
+        auditService.logAction(userId, "ORDER_STATUS_UPDATED", "Order", orderId,
+                "Order status updated from " + oldStatus + " to " + status);
+
+        log.info("Order {} status updated successfully", orderId);
+        return orderMapper.toDTO(order);
+    }
+    private void validateStatusTransition(OrderStatus current, OrderStatus next) {
+        if (current == next) {
+            return; // Same status, no transition needed
         }
 
-        if (currentStatus == OrderStatus.PICKED_UP && newStatus != OrderStatus.IN_TRANSIT && newStatus != OrderStatus.CANCELLED) {
-            throw new BadRequestException("Picked up orders can only be in transit or cancelled");
+        // Define valid transitions
+        switch (current) {
+            case PENDING:
+                if (next != OrderStatus.PAYMENT_PENDING && next != OrderStatus.CANCELLED) {
+                    throw new IllegalStateException("Invalid transition from PENDING to " + next);
+                }
+                break;
+            case PAYMENT_PENDING:
+                if (next != OrderStatus.PAID && next != OrderStatus.CANCELLED) {
+                    throw new IllegalStateException("Invalid transition from PAYMENT_PENDING to " + next);
+                }
+                break;
+            case PAID:
+                if (next != OrderStatus.READY_FOR_DISPATCH && next != OrderStatus.CANCELLED) {
+                    throw new IllegalStateException("Invalid transition from PAID to " + next);
+                }
+                break;
+            case READY_FOR_DISPATCH:
+                if (next != OrderStatus.DISPATCH && next != OrderStatus.CANCELLED) {
+                    throw new IllegalStateException("Invalid transition from READY_FOR_DISPATCH to " + next);
+                }
+                break;
+            case DISPATCH:
+                if (next != OrderStatus.PICKED_UP && next != OrderStatus.CANCELLED) {
+                    throw new IllegalStateException("Invalid transition from DISPATCH to " + next);
+                }
+                break;
+            case PICKED_UP:
+                if (next != OrderStatus.IN_TRANSIT && next != OrderStatus.CANCELLED) {
+                    throw new IllegalStateException("Invalid transition from PICKED_UP to " + next);
+                }
+                break;
+            case IN_TRANSIT:
+                if (next != OrderStatus.DELIVERED && next != OrderStatus.CANCELLED) {
+                    throw new IllegalStateException("Invalid transition from IN_TRANSIT to " + next);
+                }
+                break;
+            case DELIVERED:
+                if (next != OrderStatus.COMPLETED) {
+                    throw new IllegalStateException("Invalid transition from DELIVERED to " + next);
+                }
+                break;
+            case COMPLETED:
+            case CANCELLED:
+                throw new IllegalStateException("Cannot transition from terminal status: " + current);
+            default:
+                throw new IllegalStateException("Unknown status: " + current);
         }
+    }
 
-        if (currentStatus == OrderStatus.IN_TRANSIT && newStatus != OrderStatus.DELIVERED && newStatus != OrderStatus.CANCELLED) {
-            throw new BadRequestException("Orders in transit can only be delivered or cancelled");
-        }
-
-        if (currentStatus == OrderStatus.DELIVERED && newStatus != OrderStatus.DELIVERED) {
-            throw new BadRequestException("Delivered orders cannot be changed");
-        }
-
-        if (currentStatus == OrderStatus.CANCELLED && newStatus != OrderStatus.CANCELLED) {
-            throw new BadRequestException("Cancelled orders cannot be changed");
-        }
+    private PaginatedResponseDTO<OrderResponseDTO> toPaginatedResponse(Page<Order> page) {
+        List<OrderResponseDTO> content = page.getContent().stream()
+                .map(orderMapper::toDTO)
+                .collect(Collectors.toList());
+        return new PaginatedResponseDTO<>(content, page.getNumber(), page.getSize(), page.getTotalElements());
     }
 }

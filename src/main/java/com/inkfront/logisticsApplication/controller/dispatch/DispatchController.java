@@ -1,12 +1,15 @@
 package com.inkfront.logisticsApplication.controller.dispatch;
 
 import com.inkfront.logisticsApplication.domain.constants.SuccessMessages;
+import com.inkfront.logisticsApplication.domain.enums.OrderStatus;
 import com.inkfront.logisticsApplication.dto.request.dispatch.*;
 import com.inkfront.logisticsApplication.dto.response.common.ApiResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.common.PaginatedResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.dispatch.DispatchResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.dispatch.DispatchSummaryDTO;
+import com.inkfront.logisticsApplication.dto.response.order.OrderResponseDTO;
 import com.inkfront.logisticsApplication.security.AuthenticatedUser;
+import com.inkfront.logisticsApplication.service.interfaces.OrderService;
 import com.inkfront.logisticsApplication.service.interfaces.dispatch.DispatchService;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -19,6 +22,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 
+import java.util.List;
+
 @Slf4j
 @RestController
 @RequestMapping("/api/dispatch")
@@ -28,6 +33,11 @@ import org.springframework.web.bind.annotation.*;
 public class DispatchController {
 
     private final DispatchService dispatchService;
+    private final OrderService orderService;
+
+    // ============================================
+    // CREATE / ASSIGN ENDPOINTS
+    // ============================================
 
     @PostMapping
     @Operation(summary = "Create a new dispatch")
@@ -39,6 +49,18 @@ public class DispatchController {
         log.info("Create dispatch request for order: {} by user: {}", request.getOrderId(), user.getId());
         DispatchResponseDTO response = dispatchService.createDispatch(request, user.getId());
         return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DATA_SAVED, response));
+    }
+
+    @PostMapping("/manual-assign")
+    @Operation(summary = "Manually assign driver and vehicle to an order (creates dispatch if needed)")
+    @PreAuthorize("hasAnyRole('ADMIN','DISPATCHER')")
+    public ResponseEntity<ApiResponseDTO<DispatchResponseDTO>> manualAssignDispatch(
+            Authentication authentication,
+            @Valid @RequestBody ManualAssignDispatchRequestDTO request) {
+        AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
+        log.info("Manual assign dispatch for order: {} by user: {}", request.getOrderId(), user.getId());
+        DispatchResponseDTO response = dispatchService.manualAssignDispatch(request, user.getId());
+        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DISPATCH_ASSIGNED, response));
     }
 
     @PostMapping("/{dispatchId}/assign-driver")
@@ -67,6 +89,10 @@ public class DispatchController {
         return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.VEHICLE_ASSIGNED, response));
     }
 
+    // ============================================
+    // DRIVER ACTION ENDPOINTS
+    // ============================================
+
     @PostMapping("/{dispatchId}/accept")
     @Operation(summary = "Accept a dispatch (driver)")
     @PreAuthorize("hasRole('DRIVER')")
@@ -92,8 +118,12 @@ public class DispatchController {
         return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.OPERATION_SUCCESS, response));
     }
 
+    // ============================================
+    // ADMIN ACTION ENDPOINTS
+    // ============================================
+
     @PostMapping("/{dispatchId}/reassign")
-    @Operation(summary = "Reassign a dispatch")
+    @Operation(summary = "Reassign a failed or pending dispatch")
     @PreAuthorize("hasAnyRole('ADMIN','DISPATCHER')")
     public ResponseEntity<ApiResponseDTO<DispatchResponseDTO>> reassignDispatch(
             @PathVariable String dispatchId,
@@ -106,14 +136,14 @@ public class DispatchController {
 
     @PostMapping("/{dispatchId}/cancel")
     @Operation(summary = "Cancel a dispatch")
-    @PreAuthorize("hasAnyRole('ADMIN','DISPATCHER')")
+    @PreAuthorize("hasAnyRole('ADMIN','DISPATCHER','DRIVER')")
     public ResponseEntity<ApiResponseDTO<DispatchResponseDTO>> cancelDispatch(
             @PathVariable String dispatchId,
-            @RequestParam String reason,
+            @Valid @RequestBody CancelDispatchRequestDTO request,
             Authentication authentication) {
         AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
-        log.info("Cancel dispatch {} by user: {} reason: {}", dispatchId, user.getId(), reason);
-        DispatchResponseDTO response = dispatchService.cancelDispatch(dispatchId, reason, user.getId());
+        log.info("Cancel dispatch {} by user: {} reason: {}", dispatchId, user.getId(), request.getReason());
+        DispatchResponseDTO response = dispatchService.cancelDispatch(dispatchId, request.getReason(), user.getId());
         return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.OPERATION_SUCCESS, response));
     }
 
@@ -128,6 +158,10 @@ public class DispatchController {
         DispatchResponseDTO response = dispatchService.completeDispatch(dispatchId, user.getId());
         return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.OPERATION_SUCCESS, response));
     }
+
+    // ============================================
+    // GET ENDPOINTS
+    // ============================================
 
     @GetMapping("/{dispatchId}")
     @Operation(summary = "Get dispatch by ID")
@@ -181,5 +215,14 @@ public class DispatchController {
         PaginatedResponseDTO<DispatchSummaryDTO> response =
                 dispatchService.getAllDispatches(page, size, status, sortBy, sortDirection);
         return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, response));
+    }
+
+    @GetMapping("/ready-orders")
+    @Operation(summary = "Get orders ready for dispatch")
+    @PreAuthorize("hasAnyRole('ADMIN','DISPATCHER')")
+    public ResponseEntity<ApiResponseDTO<List<OrderResponseDTO>>> getOrdersReadyForDispatch() {
+        log.info("Get orders ready for dispatch");
+        List<OrderResponseDTO> orders = orderService.getOrdersByStatus(OrderStatus.READY_FOR_DISPATCH);
+        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, orders));
     }
 }

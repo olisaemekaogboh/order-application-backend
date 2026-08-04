@@ -253,7 +253,7 @@ public class PaymentServiceImpl implements PaymentService {
 
             // 2. Update order status from PENDING to ASSIGNED (since PROCESSING doesn't exist)
             if (order.getStatus() == OrderStatus.PENDING) {
-                order.setStatus(OrderStatus.ASSIGNED);
+                order.setStatus(OrderStatus.DISPATCH);
                 orderRepository.save(order);
                 log.info("✅ Order {} status updated from PENDING to ASSIGNED after payment", order.getId());
             }
