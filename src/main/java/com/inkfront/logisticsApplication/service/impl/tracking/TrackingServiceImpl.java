@@ -117,9 +117,17 @@ public class TrackingServiceImpl implements TrackingService {
 
         // Validate driver
         Driver driver = trackingValidator.validateDriver(request.getDriverId());
-        if (!Boolean.TRUE.equals(driver.getAvailable())) {
-            throw new InvalidTrackingStateException("Driver is not available");
+
+        if (order.getDriver() == null) {
+            throw new InvalidTrackingStateException(
+                    "No driver assigned to this order.");
         }
+
+        if (!order.getDriver().getId().equals(driver.getId())) {
+            throw new InvalidTrackingStateException(
+                    "Driver is not assigned to this order.");
+        }
+
 
         // Create tracking session
         TrackingSession session = new TrackingSession();

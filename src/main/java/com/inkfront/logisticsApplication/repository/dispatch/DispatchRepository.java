@@ -16,7 +16,16 @@ import java.util.Optional;
 @Repository
 public interface DispatchRepository extends JpaRepository<Dispatch, String> {
 
-    Optional<Dispatch> findByOrderId(String orderId);
+    // ==========================================================
+    // Basic Queries
+    // ==========================================================
+
+    @Query("""
+        SELECT d
+        FROM Dispatch d
+        WHERE d.order.id = :orderId
+    """)
+    Optional<Dispatch> findByOrderId(@Param("orderId") String orderId);
 
     List<Dispatch> findByDriverId(String driverId);
 
@@ -28,32 +37,109 @@ public interface DispatchRepository extends JpaRepository<Dispatch, String> {
 
     Page<Dispatch> findByStatus(DispatchStatus status, Pageable pageable);
 
-    @Query("SELECT d FROM Dispatch d WHERE d.status = 'PENDING' OR d.status = 'SEARCHING_DRIVER' OR d.status = 'SEARCHING_VEHICLE'")
+    // ==========================================================
+    // Queue Queries
+    // ==========================================================
+
+    @Query("""
+        SELECT d
+        FROM Dispatch d
+        WHERE d.status IN (
+            'PENDING',
+            'WAITING_DRIVER_ACCEPTANCE'
+        )
+    """)
     List<Dispatch> findPendingDispatches();
 
-    @Query("SELECT d FROM Dispatch d WHERE d.status = 'PENDING' ORDER BY d.priority DESC, d.createdAt ASC")
+    @Query("""
+        SELECT d
+        FROM Dispatch d
+        WHERE d.status = 'PENDING'
+        ORDER BY d.priority DESC,
+                 d.createdAt ASC
+    """)
     List<Dispatch> findPendingDispatchesOrderedByPriority();
 
-    @Query("SELECT d FROM Dispatch d WHERE d.scheduledTime <= :now AND d.status = 'PENDING'")
-    List<Dispatch> findScheduledDispatchesDue(@Param("now") LocalDateTime now);
+    @Query("""
+        SELECT d
+        FROM Dispatch d
+        WHERE d.scheduledTime <= :now
+          AND d.status = 'PENDING'
+    """)
+    List<Dispatch> findScheduledDispatchesDue(
+            @Param("now") LocalDateTime now);
 
-    @Query("SELECT COUNT(d) FROM Dispatch d WHERE d.status = :status")
+    // ==========================================================
+    // Analytics
+    // ==========================================================
+
+    @Query("""
+        SELECT COUNT(d)
+        FROM Dispatch d
+        WHERE d.status = :status
+    """)
     long countByStatus(@Param("status") DispatchStatus status);
 
-    @Query("SELECT COUNT(d) FROM Dispatch d WHERE d.createdAt BETWEEN :start AND :end")
-    long countCreatedBetween(@Param("start") LocalDateTime start, @Param("end") LocalDateTime end);
+    @Query("""
+        SELECT COUNT(d)
+        FROM Dispatch d
+        WHERE d.createdAt BETWEEN :start AND :end
+    """)
+    long countCreatedBetween(
+            @Param("start") LocalDateTime start,
+            @Param("end") LocalDateTime end);
 
-    @Query("SELECT AVG(TIMESTAMPDIFF(MINUTE, d.createdAt, d.completedAt)) FROM Dispatch d WHERE d.status = 'COMPLETED' AND d.completedAt IS NOT NULL")
+    @Query(value = """
+SELECT AVG(EXTRACT(EPOCH FROM (completed_at - created_at)) / 60.0)
+FROM dispatches
+WHERE status = 'DELIVERED'
+AND completed_at IS NOT NULL
+""", nativeQuery = true)
     Double averageDispatchCompletionTime();
 
-    // New methods for assignment validation
-    boolean existsByDriverIdAndStatusIn(String driverId, List<DispatchStatus> statuses);
+    // ==========================================================
+    // Assignment Validation
+    // ==========================================================
 
-    boolean existsByVehicleIdAndStatusIn(String vehicleId, List<DispatchStatus> statuses);
+    boolean existsByDriverIdAndStatusIn(
+            String driverId,
+            List<DispatchStatus> statuses);
 
-    @Query("SELECT d FROM Dispatch d WHERE d.driverId = :driverId AND d.status = 'DRIVER_ACCEPTED'")
-    List<Dispatch> findActiveDispatchesByDriverId(@Param("driverId") String driverId);
+    boolean existsByVehicleIdAndStatusIn(
+            String vehicleId,
+            List<DispatchStatus> statuses);
 
-    @Query("SELECT d FROM Dispatch d WHERE d.vehicleId = :vehicleId AND d.status IN ('DRIVER_ACCEPTED', 'EN_ROUTE_PICKUP', 'DELIVERY_IN_PROGRESS')")
-    List<Dispatch> findActiveDispatchesByVehicleId(@Param("vehicleId") String vehicleId);
+    // ==========================================================
+    // Active Dispatches
+    // ==========================================================
+
+    @Query("""
+        SELECT d
+        FROM Dispatch d
+        WHERE d.driverId = :driverId
+          AND d.status IN (
+                'WAITING_DRIVER_ACCEPTANCE',
+                'DRIVER_ACCEPTED',
+                'EN_ROUTE_PICKUP',
+                'PICKUP_COMPLETED',
+                'DELIVERY_IN_PROGRESS'
+          )
+    """)
+    List<Dispatch> findActiveDispatchesByDriverId(
+            @Param("driverId") String driverId);
+
+    @Query("""
+        SELECT d
+        FROM Dispatch d
+        WHERE d.vehicleId = :vehicleId
+          AND d.status IN (
+                'WAITING_DRIVER_ACCEPTANCE',
+                'DRIVER_ACCEPTED',
+                'EN_ROUTE_PICKUP',
+                'PICKUP_COMPLETED',
+                'DELIVERY_IN_PROGRESS'
+          )
+    """)
+    List<Dispatch> findActiveDispatchesByVehicleId(
+            @Param("vehicleId") String vehicleId);
 }

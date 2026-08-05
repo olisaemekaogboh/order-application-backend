@@ -37,7 +37,6 @@ public class DispatchAssignmentOrchestrator {
     private final DispatchHistoryRepository historyRepository;
     private final DriverRepository driverRepository;
     private final VehicleRepository vehicleRepository;
-    private final OrderRepository orderRepository;
     private final DispatchNotificationService notificationService;
     private final DispatchEventPublisher eventPublisher;
     private final TrackingService trackingService;
@@ -50,148 +49,169 @@ public class DispatchAssignmentOrchestrator {
             String assignedBy,
             String notes) {
 
-        log.info("Starting dispatch assignment orchestration for dispatch: {}", dispatch.getId());
+        log.info("Assigning dispatch {}", dispatch.getId());
 
-        DispatchAssignmentResult result = DispatchAssignmentResult.builder()
-                .success(false)
-                .build();
+        Driver driver = validateAndAssignDriver(driverId);
 
-        try {
-            // 1. Validate and assign driver
-            Driver driver = validateAndAssignDriver(driverId, dispatch.getOrder().getId());
-            dispatch.setDriver(driver);
+        Vehicle vehicle = validateAndAssignVehicle(vehicleId);
 
-            // 2. Validate and assign vehicle
-            Vehicle vehicle = validateAndAssignVehicle(vehicleId, dispatch.getOrder().getId());
-            dispatch.setVehicle(vehicle);
+        dispatch.setDriver(driver);
+        dispatch.setVehicle(vehicle);
 
-            // 3. Update dispatch status
-            dispatch.setStatus(DispatchStatus.WAITING_DRIVER_ACCEPTANCE);
-            dispatch.setAssignedAt(LocalDateTime.now());
-            if (notes != null) {
-                dispatch.setNotes(notes);
-            }
+        dispatch.setStatus(DispatchStatus.WAITING_DRIVER_ACCEPTANCE);
+        dispatch.setAssignedAt(LocalDateTime.now());
 
-            // 4. Update driver availability
-            driver.setAvailable(false);
-            driverRepository.save(driver);
-
-            // 5. Update vehicle status
-            vehicle.setStatus(VehicleStatus.ASSIGNED);
-            vehicleRepository.save(vehicle);
-
-            // 6. Update order status
-            Order order = dispatch.getOrder();
-            order.setStatus(OrderStatus.DISPATCH);
-            order.setDriver(driver);
-            orderRepository.save(order);
-
-            // 7. Save dispatch
-            dispatch = dispatchRepository.save(dispatch);
-
-            // 8. Log history
-            logDispatchHistory(dispatch, DispatchStatus.PENDING, DispatchStatus.WAITING_DRIVER_ACCEPTANCE,
-                    assignedBy, "Dispatch assigned to driver: " + driver.getName() +
-                            ", vehicle: " + vehicle.getVehicleNumber());
-
-            // 9. Send notifications
-            notificationService.notifyDriverAssigned(dispatch, driver.getName());
-            notificationService.notifyVehicleAssigned(dispatch, vehicle.getVehicleNumber());
-            notificationService.notifyDispatchAssigned(dispatch);
-
-            // 10. Publish events
-            eventPublisher.publishDispatchAssigned(dispatch);
-
-            // 11. Start tracking
-            try {
-                StartTrackingRequestDTO trackingRequest = StartTrackingRequestDTO.builder()
-                        .orderId(order.getId())
-                        .driverId(driver.getId())
-                        .build();
-                trackingService.startTracking(trackingRequest, assignedBy);
-                log.info("Tracking started for order: {}", order.getId());
-            } catch (Exception e) {
-                log.warn("Could not start tracking for dispatch {}: {}", dispatch.getId(), e.getMessage());
-            }
-
-            // 12. Build success result
-            result.setSuccess(true);
-            result.setDriverId(driver.getId());
-            result.setDriverName(driver.getName());
-            result.setVehicleId(vehicle.getId());
-            result.setVehicleNumber(vehicle.getVehicleNumber());
-            result.setMessage("Dispatch assigned successfully");
-
-            log.info("Dispatch assignment completed successfully: {}", dispatch.getId());
-
-        } catch (Exception e) {
-            log.error("Dispatch assignment failed: {}", e.getMessage(), e);
-            result.setMessage(e.getMessage());
-
-            if (dispatch.getId() != null) {
-                logDispatchHistory(dispatch, dispatch.getStatus(), DispatchStatus.FAILED,
-                        assignedBy, "Assignment failed: " + e.getMessage());
-            }
+        if (notes != null && !notes.isBlank()) {
+            dispatch.setNotes(notes);
         }
 
-        return result;
-    }
+        driver.setAvailable(false);
+        driver.setLastActive(LocalDateTime.now());
 
-    private Driver validateAndAssignDriver(String driverId, String orderId) {
-        Driver driver = driverRepository.findById(driverId)
-                .orElseThrow(() -> new IllegalArgumentException("Driver not found: " + driverId));
+        vehicle.assign();
 
-        if (!driver.getVerified()) {
-            throw new DriverUnavailableException("Driver is not verified");
-        }
+        driverRepository.save(driver);
+        vehicleRepository.save(vehicle);
 
-        if (!driver.getAvailable()) {
-            throw new DriverUnavailableException("Driver is not available");
-        }
+        dispatch = dispatchRepository.save(dispatch);
 
-        boolean hasActiveDispatch = dispatchRepository.existsByDriverIdAndStatusIn(
-                driverId,
-                List.of(
-                        DispatchStatus.WAITING_DRIVER_ACCEPTANCE,
-                        DispatchStatus.DRIVER_ACCEPTED,
-                        DispatchStatus.EN_ROUTE_PICKUP,
-                        DispatchStatus.PICKUP_COMPLETED,
-                        DispatchStatus.DELIVERY_IN_PROGRESS
-                )
+        logDispatchHistory(
+                dispatch,
+                DispatchStatus.PENDING,
+                DispatchStatus.WAITING_DRIVER_ACCEPTANCE,
+                assignedBy,
+                "Driver assigned: "
+                        + driver.getName()
+                        + ", Vehicle: "
+                        + vehicle.getVehicleNumber()
         );
 
-        if (hasActiveDispatch) {
-            throw new DriverUnavailableException("Driver already has an active dispatch");
+        notificationService.notifyDriverAssigned(
+                dispatch,
+                driver.getName()
+        );
+
+        notificationService.notifyVehicleAssigned(
+                dispatch,
+                vehicle.getVehicleNumber()
+        );
+
+        notificationService.notifyDispatchAssigned(dispatch);
+
+        eventPublisher.publishDispatchAssigned(dispatch);
+
+        try {
+
+            StartTrackingRequestDTO trackingRequest =
+                    StartTrackingRequestDTO.builder()
+                            .orderId(dispatch.getOrder().getId())
+                            .driverId(driver.getId())
+                            .build();
+
+
+
+        } catch (Exception e) {
+
+            log.error(
+                    "Unable to initialize tracking for dispatch {}",
+                    dispatch.getId(),
+                    e
+            );
+
+            /*
+             * Tracking should not rollback assignment.
+             * Assignment has already succeeded.
+             */
+        }
+
+        return DispatchAssignmentResult.builder()
+                .success(true)
+                .driverId(driver.getId())
+                .driverName(driver.getName())
+                .vehicleId(vehicle.getId())
+                .vehicleNumber(vehicle.getVehicleNumber())
+                .message("Dispatch assigned successfully")
+                .build();
+    }
+    private Driver validateAndAssignDriver(String driverId) {
+
+        Driver driver = driverRepository.findById(driverId)
+                .orElseThrow(() ->
+                        new DriverUnavailableException(
+                                "Driver not found: " + driverId
+                        ));
+
+        if (!Boolean.TRUE.equals(driver.getVerified())) {
+            throw new DriverUnavailableException(
+                    "Driver is not verified."
+            );
+        }
+
+        if (!Boolean.TRUE.equals(driver.getAvailable())) {
+            throw new DriverUnavailableException(
+                    "Driver is currently unavailable."
+            );
+        }
+
+        List<DispatchStatus> activeStatuses = List.of(
+                DispatchStatus.WAITING_DRIVER_ACCEPTANCE,
+                DispatchStatus.DRIVER_ACCEPTED,
+                DispatchStatus.EN_ROUTE_PICKUP,
+                DispatchStatus.PICKUP_COMPLETED,
+                DispatchStatus.DELIVERY_IN_PROGRESS
+        );
+
+        boolean alreadyAssigned = dispatchRepository.existsByDriverIdAndStatusIn(
+                driverId,
+                activeStatuses
+        );
+
+        if (alreadyAssigned) {
+            throw new DriverUnavailableException(
+                    "Driver already has an active dispatch."
+            );
         }
 
         return driver;
     }
 
-    private Vehicle validateAndAssignVehicle(String vehicleId, String orderId) {
+    private Vehicle validateAndAssignVehicle(String vehicleId) {
+
         Vehicle vehicle = vehicleRepository.findById(vehicleId)
-                .orElseThrow(() -> new IllegalArgumentException("Vehicle not found: " + vehicleId));
+                .orElseThrow(() ->
+                        new VehicleUnavailableException(
+                                "Vehicle not found: " + vehicleId
+                        ));
 
         if (!vehicle.isAvailable()) {
-            throw new VehicleUnavailableException("Vehicle is not available");
+            throw new VehicleUnavailableException(
+                    "Vehicle is currently unavailable."
+            );
         }
 
         if (vehicle.getStatus() == VehicleStatus.UNDER_MAINTENANCE) {
-            throw new VehicleUnavailableException("Vehicle is under maintenance");
+            throw new VehicleUnavailableException(
+                    "Vehicle is under maintenance."
+            );
         }
 
-        boolean hasActiveAssignment = dispatchRepository.existsByVehicleIdAndStatusIn(
-                vehicleId,
-                List.of(
-                        DispatchStatus.WAITING_DRIVER_ACCEPTANCE,
-                        DispatchStatus.DRIVER_ACCEPTED,
-                        DispatchStatus.EN_ROUTE_PICKUP,
-                        DispatchStatus.PICKUP_COMPLETED,
-                        DispatchStatus.DELIVERY_IN_PROGRESS
-                )
+        List<DispatchStatus> activeStatuses = List.of(
+                DispatchStatus.WAITING_DRIVER_ACCEPTANCE,
+                DispatchStatus.DRIVER_ACCEPTED,
+                DispatchStatus.EN_ROUTE_PICKUP,
+                DispatchStatus.PICKUP_COMPLETED,
+                DispatchStatus.DELIVERY_IN_PROGRESS
         );
 
-        if (hasActiveAssignment) {
-            throw new VehicleUnavailableException("Vehicle is already assigned to another dispatch");
+        boolean alreadyAssigned = dispatchRepository.existsByVehicleIdAndStatusIn(
+                vehicleId,
+                activeStatuses
+        );
+
+        if (alreadyAssigned) {
+            throw new VehicleUnavailableException(
+                    "Vehicle already has an active dispatch."
+            );
         }
 
         return vehicle;
@@ -208,36 +228,53 @@ public class DispatchAssignmentOrchestrator {
         history.setReason(reason);
         historyRepository.save(history);
     }
-
     @Transactional
-    public void releaseResources(Dispatch dispatch, String userId, String reason) {
-        log.info("Releasing resources for dispatch: {}", dispatch.getId());
+    public void releaseResources(
+            Dispatch dispatch,
+            String userId,
+            String reason) {
+
+        log.info("Releasing resources for dispatch {}", dispatch.getId());
 
         Driver driver = dispatch.getDriver();
+
         if (driver != null) {
+
             driver.setAvailable(true);
+            driver.setLastActive(LocalDateTime.now());
+
             driverRepository.save(driver);
         }
 
         Vehicle vehicle = dispatch.getVehicle();
+
         if (vehicle != null) {
-            vehicle.setStatus(VehicleStatus.AVAILABLE);
+
+            vehicle.release();
+
             vehicleRepository.save(vehicle);
         }
 
-        Order order = dispatch.getOrder();
-        if (dispatch.getStatus() == DispatchStatus.DELIVERED) {
-            order.setStatus(OrderStatus.DELIVERED);  // ✅ Changed from COMPLETED to DELIVERED
-            order.setDeliveryDate(LocalDateTime.now());
-        } else if (dispatch.getStatus() == DispatchStatus.CANCELLED ||
-                dispatch.getStatus() == DispatchStatus.FAILED) {
-            order.setStatus(OrderStatus.CANCELLED);
-            order.setCancelledAt(LocalDateTime.now());
-            order.setCancellationReason(reason);
-        }
-        orderRepository.save(order);
+        /*
+         * Do NOT update the Order here.
+         *
+         * Order status is managed by:
+         *
+         * completeDispatch()
+         * cancelDispatch()
+         * rejectDispatch()
+         *
+         * This method ONLY releases resources.
+         */
 
-        logDispatchHistory(dispatch, dispatch.getStatus(), dispatch.getStatus(),
-                userId, "Resources released: " + reason);
+        logDispatchHistory(
+                dispatch,
+                dispatch.getStatus(),
+                dispatch.getStatus(),
+                userId,
+                "Resources released. Reason: " + reason
+        );
     }
+
+
 }

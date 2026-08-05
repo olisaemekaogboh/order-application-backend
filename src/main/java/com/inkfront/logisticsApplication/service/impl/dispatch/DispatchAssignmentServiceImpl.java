@@ -17,6 +17,7 @@ import com.inkfront.logisticsApplication.service.interfaces.dispatch.DispatchAss
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Comparator;
 import java.util.List;
@@ -30,7 +31,7 @@ public class DispatchAssignmentServiceImpl implements DispatchAssignmentService 
     private final DispatchRepository dispatchRepository;
     private final DriverRepository driverRepository;
     private final VehicleRepository vehicleRepository;
-    private final OrderRepository orderRepository;
+
 
     /**
      * List of statuses that indicate a driver is actively on a dispatch
@@ -44,115 +45,123 @@ public class DispatchAssignmentServiceImpl implements DispatchAssignmentService 
     );
 
     @Override
+    @Transactional(readOnly = true)
     public List<Driver> findAvailableDriversForDispatch(String orderId) {
-        List<Driver> availableDrivers = driverRepository.findByAvailableTrueAndVerifiedTrue();
 
-        return availableDrivers.stream()
-                .filter(driver -> !dispatchRepository.existsByDriverIdAndStatusIn(
-                        driver.getId(),
-                        ACTIVE_DISPATCH_STATUSES))
-                .collect(Collectors.toList());
-    }
-
-    @Override
-    public List<Vehicle> findAvailableVehiclesForDispatch(String orderId) {
-        return vehicleRepository.findByStatusAndDeletedFalse(VehicleStatus.AVAILABLE)
+        return driverRepository.findByAvailableTrueAndVerifiedTrue()
                 .stream()
-                .filter(vehicle -> !dispatchRepository.existsByVehicleIdAndStatusIn(
-                        vehicle.getId(),
-                        ACTIVE_DISPATCH_STATUSES))
-                .collect(Collectors.toList());
+                .filter(driver ->
+                        !dispatchRepository.existsByDriverIdAndStatusIn(
+                                driver.getId(),
+                                ACTIVE_DISPATCH_STATUSES
+                        ))
+                .toList();
     }
 
     @Override
+    @Transactional(readOnly = true)
+    public List<Vehicle> findAvailableVehiclesForDispatch(String orderId) {
+
+        return vehicleRepository.findByStatusAndDeletedFalse(
+                        VehicleStatus.AVAILABLE)
+                .stream()
+                .filter(vehicle ->
+                        !dispatchRepository.existsByVehicleIdAndStatusIn(
+                                vehicle.getId(),
+                                ACTIVE_DISPATCH_STATUSES
+                        ))
+                .toList();
+    }
+    @Override
+    @Transactional(readOnly = true)
     public Driver assignBestDriver(String orderId) {
-        List<Driver> available = findAvailableDriversForDispatch(orderId);
-        if (available.isEmpty()) {
-            throw new DriverUnavailableException("No available drivers found for this dispatch");
+
+        List<Driver> drivers =
+                findAvailableDriversForDispatch(orderId);
+
+        if (drivers.isEmpty()) {
+            throw new DriverUnavailableException(
+                    "No available drivers found."
+            );
         }
 
-        // Choose driver with highest rating and lowest completed orders (spread work)
-        return available.stream()
-                .sorted(Comparator.comparingDouble(Driver::getRating).reversed()
-                        .thenComparingInt(Driver::getCompletedOrders))
+        return drivers.stream()
+                .sorted(
+                        Comparator
+                                .comparingDouble(Driver::getRating)
+                                .reversed()
+                                .thenComparingInt(Driver::getCompletedOrders)
+                )
                 .findFirst()
-                .orElse(available.get(0));
+                .orElseThrow();
     }
-
     @Override
+    @Transactional(readOnly = true)
     public Vehicle assignBestVehicle(String orderId) {
-        List<Vehicle> available = findAvailableVehiclesForDispatch(orderId);
-        if (available.isEmpty()) {
-            throw new VehicleUnavailableException("No available vehicles found for this dispatch");
+
+        List<Vehicle> vehicles =
+                findAvailableVehiclesForDispatch(orderId);
+
+        if (vehicles.isEmpty()) {
+            throw new VehicleUnavailableException(
+                    "No available vehicles found."
+            );
         }
 
-        // Choose vehicle with lowest current mileage (spread usage)
-        return available.stream()
-                .min(Comparator.comparingDouble(Vehicle::getCurrentMileage))
-                .orElse(available.get(0));
+        return vehicles.stream()
+                .min(
+                        Comparator.comparingDouble(
+                                Vehicle::getCurrentMileage
+                        )
+                )
+                .orElseThrow();
     }
 
     @Override
-    public DispatchAssignmentResult assignBestDriverAndVehicle(Dispatch dispatch) {
-        log.info("Assigning best driver and vehicle for dispatch: {}", dispatch.getId());
+    @Transactional(readOnly = true)
+    public DispatchAssignmentResult assignBestDriverAndVehicle(
+            Dispatch dispatch) {
 
-        DispatchAssignmentResult result = new DispatchAssignmentResult();
-        result.setSuccess(false);
+        Driver driver =
+                assignBestDriver(dispatch.getOrder().getId());
 
-        try {
-            Driver bestDriver = assignBestDriver(dispatch.getOrder().getId());
-            if (bestDriver != null) {
-                dispatch.setDriver(bestDriver);
-                // driverId is a read-only field, managed by the relationship
-                result.setDriverId(bestDriver.getId());
-                result.setDriverName(bestDriver.getName());
-            } else {
-                result.setMessage("No suitable driver found");
-                return result;
-            }
+        Vehicle vehicle =
+                assignBestVehicle(dispatch.getOrder().getId());
 
-            Vehicle bestVehicle = assignBestVehicle(dispatch.getOrder().getId());
-            if (bestVehicle != null) {
-                dispatch.setVehicle(bestVehicle);
-                // vehicleId is a read-only field, managed by the relationship
-                result.setVehicleId(bestVehicle.getId());
-                result.setVehicleNumber(bestVehicle.getVehicleNumber());
-            } else {
-                result.setMessage("No suitable vehicle found");
-                return result;
-            }
-
-            // ✅ FIX: Use WAITING_DRIVER_ACCEPTANCE instead of DRIVER_ASSIGNED
-            dispatch.setStatus(DispatchStatus.WAITING_DRIVER_ACCEPTANCE);
-            dispatch.setAssignedAt(java.time.LocalDateTime.now());
-
-            result.setSuccess(true);
-            result.setMessage("Driver and vehicle assigned successfully");
-
-        } catch (Exception e) {
-            log.error("Error in automatic assignment: {}", e.getMessage());
-            result.setMessage(e.getMessage());
-        }
-
-        return result;
+        return DispatchAssignmentResult.builder()
+                .success(true)
+                .driverId(driver.getId())
+                .driverName(driver.getName())
+                .vehicleId(vehicle.getId())
+                .vehicleNumber(vehicle.getVehicleNumber())
+                .message("Best resources found.")
+                .build();
     }
 
     @Override
-    public boolean validateDriverAssignment(Driver driver, String orderId) {
-        if (driver == null) return false;
-        if (!driver.getAvailable()) return false;
-        return !dispatchRepository.existsByDriverIdAndStatusIn(
+    public boolean validateDriverAssignment(
+            Driver driver,
+            String orderId) {
+
+        return driver != null
+                && Boolean.TRUE.equals(driver.getAvailable())
+                && !dispatchRepository.existsByDriverIdAndStatusIn(
                 driver.getId(),
-                ACTIVE_DISPATCH_STATUSES);
+                ACTIVE_DISPATCH_STATUSES
+        );
     }
 
     @Override
-    public boolean validateVehicleAssignment(Vehicle vehicle, String orderId) {
-        if (vehicle == null) return false;
-        if (!vehicle.isAvailable()) return false;
-        return !dispatchRepository.existsByVehicleIdAndStatusIn(
+    public boolean validateVehicleAssignment(
+            Vehicle vehicle,
+            String orderId) {
+
+        return vehicle != null
+                && vehicle.isAvailable()
+                && !dispatchRepository.existsByVehicleIdAndStatusIn(
                 vehicle.getId(),
-                ACTIVE_DISPATCH_STATUSES);
+                ACTIVE_DISPATCH_STATUSES
+        );
     }
 
     @Override

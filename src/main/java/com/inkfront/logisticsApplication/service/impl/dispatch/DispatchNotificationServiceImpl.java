@@ -3,7 +3,6 @@ package com.inkfront.logisticsApplication.service.impl.dispatch;
 import com.inkfront.logisticsApplication.domain.entity.dispatch.Dispatch;
 import com.inkfront.logisticsApplication.domain.entity.User;
 import com.inkfront.logisticsApplication.domain.enums.UserRole;
-import com.inkfront.logisticsApplication.domain.enums.UserRole;
 import com.inkfront.logisticsApplication.dto.response.dispatch.LiveDispatchDTO;
 import com.inkfront.logisticsApplication.mapper.dispatch.DispatchMapper;
 import com.inkfront.logisticsApplication.repository.DriverRepository;

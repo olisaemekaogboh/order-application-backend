@@ -24,7 +24,13 @@ public interface OrderRepository extends JpaRepository<Order, String> {
 
     Page<Order> findByDriverId(String driverId, Pageable pageable);
 
-    Page<Order> findByStatus(OrderStatus status, Pageable pageable);
+    @Query("""
+    SELECT o
+    FROM Order o
+    WHERE o.status = :status
+    ORDER BY o.createdAt DESC
+""")
+    Page<Order> findByStatus(@Param("status") OrderStatus status, Pageable pageable);
 
     Page<Order> findByUserIdAndStatus(String userId, OrderStatus status, Pageable pageable);
 
