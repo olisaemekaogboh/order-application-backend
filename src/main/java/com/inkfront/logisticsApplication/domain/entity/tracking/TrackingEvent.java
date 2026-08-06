@@ -50,4 +50,8 @@ public class TrackingEvent extends BaseEntity {
 
     @Column(name = "timestamp", nullable = false)
     private LocalDateTime timestamp;
+
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version = 0L;
 }

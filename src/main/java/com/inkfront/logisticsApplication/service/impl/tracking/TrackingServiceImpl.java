@@ -76,6 +76,7 @@ public class TrackingServiceImpl implements TrackingService {
     // ==================== Core Operations ====================
 
     @Override
+    @Transactional
     public TrackingSessionResponseDTO startTracking(StartTrackingRequestDTO request, String userId) {
         log.info("Starting tracking for order: {} by user: {}", request.getOrderId(), userId);
 
@@ -87,7 +88,7 @@ public class TrackingServiceImpl implements TrackingService {
         // Validate order
         Order order = trackingValidator.validateOrder(request.getOrderId());
 
-        // Check if user is admin - handle enum properly
+        // Check if user is admin
         boolean isAdmin = false;
         try {
             Optional<User> userOpt = userRepository.findById(userId);
@@ -95,72 +96,103 @@ public class TrackingServiceImpl implements TrackingService {
                 User user = userOpt.get();
                 UserRole role = user.getRole();
                 log.info("User role: {}", role);
-                // Check if role is ADMIN - UserRole is an enum
-                isAdmin = UserRole.ADMIN.equals(role);
+                isAdmin = UserRole.ADMIN.equals(role) || UserRole.SUPER_ADMIN.equals(role);
             }
         } catch (Exception e) {
             log.warn("Could not check admin status for user {}: {}", userId, e.getMessage());
         }
 
-        log.info("Is admin: {}, User ID: {}, Order Owner: {}", isAdmin, userId, order.getUser().getId());
-
-        // Allow admin or the order owner to start tracking
-        if (!isAdmin && !order.getUser().getId().equals(userId)) {
-            log.warn("User {} does not own order {} and is not admin", userId, request.getOrderId());
-            throw new AccessDeniedException("You do not own this order");
-        }
-
-        // Check if tracking already exists
-        if (trackingSessionRepository.findByOrderId(order.getId()).isPresent()) {
-            throw new InvalidTrackingStateException("Tracking already started for this order");
-        }
-
         // Validate driver
         Driver driver = trackingValidator.validateDriver(request.getDriverId());
+        log.info("Driver found: {}", driver.getId());
+
+        // Check if the driver is the assigned driver for this order
+        boolean isAssignedDriver = order.getDriver() != null &&
+                order.getDriver().getId().equals(driver.getId());
+
+        log.info("Is admin: {}, Is assigned driver: {}, User ID: {}, Order Owner: {}",
+                isAdmin, isAssignedDriver, userId, order.getUser().getId());
+
+        // Allow admin, the assigned driver, or the order owner to start tracking
+        if (!isAdmin && !isAssignedDriver && !order.getUser().getId().equals(userId)) {
+            log.warn("User {} is not authorized to start tracking for order {}", userId, request.getOrderId());
+            throw new AccessDeniedException("You are not authorized to start tracking for this order");
+        }
+
+        // Check if tracking already exists - return existing if found
+        Optional<TrackingSession> existingSession = trackingSessionRepository.findByOrderId(order.getId());
+        if (existingSession.isPresent()) {
+            log.info("Tracking already exists for order: {}, returning existing session with ID: {}",
+                    request.getOrderId(), existingSession.get().getId());
+            return trackingMapper.toResponseDTO(existingSession.get());
+        }
 
         if (order.getDriver() == null) {
-            throw new InvalidTrackingStateException(
-                    "No driver assigned to this order.");
+            throw new InvalidTrackingStateException("No driver assigned to this order.");
         }
 
         if (!order.getDriver().getId().equals(driver.getId())) {
-            throw new InvalidTrackingStateException(
-                    "Driver is not assigned to this order.");
+            throw new InvalidTrackingStateException("Driver is not assigned to this order.");
         }
-
 
         // Create tracking session
         TrackingSession session = new TrackingSession();
         session.setOrder(order);
         session.setDriver(driver);
-        session.setStatus(TrackingStatus.CREATED);
+        // ✅ Start with DRIVER_ACCEPTED instead of CREATED
+        // This aligns with the dispatch acceptance workflow
+        session.setStatus(TrackingStatus.DRIVER_ACCEPTED);
         session.setStartTime(LocalDateTime.now());
         session.setLastUpdateTime(LocalDateTime.now());
         session.setCurrentLatitude(driver.getCurrentLatitude());
         session.setCurrentLongitude(driver.getCurrentLongitude());
 
+        // IMPORTANT: Set the version to 0L for new entity
+        session.setVersion(0L);
+
         session = trackingSessionRepository.save(session);
+        log.info("Created tracking session with ID: {}", session.getId());
 
-        // Log status change event
-        eventService.logStatusChange(session.getId(), null, TrackingStatus.CREATED, "Tracking started", userId);
+        // Log status change event - wrapped to prevent failure
+        try {
+            eventService.logStatusChange(session.getId(), null, TrackingStatus.DRIVER_ACCEPTED,
+                    "Tracking started - Driver accepted dispatch", userId);
+            log.info("Status change event logged successfully");
+        } catch (Exception e) {
+            log.warn("Could not log status change event: {}", e.getMessage());
+        }
 
-        // Audit
-        auditService.logAction(userId, "TRACKING_STARTED", "TrackingSession", session.getId(),
-                "Started tracking for order " + order.getOrderNumber());
+        // Audit - wrapped to prevent failure
+        try {
+            auditService.logAction(userId, "TRACKING_STARTED", "TrackingSession", session.getId(),
+                    "Started tracking for order " + order.getOrderNumber());
+            log.info("Audit logged successfully");
+        } catch (Exception e) {
+            log.warn("Could not log audit: {}", e.getMessage());
+        }
 
-        // Notify
-        notificationService.sendSystemNotification(order.getUser().getId(), "Tracking Started",
-                "Your order " + order.getOrderNumber() + " is now being tracked.");
-        notificationService.sendSystemNotification(driver.getId(), "New Tracking",
-                "You have been assigned to track order " + order.getOrderNumber());
+        // Notify - wrapped to prevent failure
+        try {
+            notificationService.sendSystemNotification(order.getUser().getId(), "Tracking Started",
+                    "Your order " + order.getOrderNumber() + " is now being tracked.");
+            notificationService.sendSystemNotification(driver.getId(), "New Tracking",
+                    "You have been assigned to track order " + order.getOrderNumber());
+            log.info("Notifications sent successfully");
+        } catch (Exception e) {
+            log.warn("Could not send notifications: {}", e.getMessage());
+        }
 
-        // Publish event
-        eventPublisher.publishTrackingStarted(session);
+        // Publish event - wrapped to prevent failure
+        try {
+            eventPublisher.publishTrackingStarted(session);
+            log.info("Event published successfully");
+        } catch (Exception e) {
+            log.warn("Could not publish event: {}", e.getMessage());
+        }
 
         log.info("Tracking started with ID: {}", session.getId());
         return trackingMapper.toResponseDTO(session);
     }
-
 
     @Override
     public TrackingSessionResponseDTO updateLocation(LocationUpdateRequestDTO request, String userId) {
@@ -219,6 +251,20 @@ public class TrackingServiceImpl implements TrackingService {
         return trackingMapper.toResponseDTO(session);
     }
 
+    /**
+     * Updates the status of a tracking session with automatic handling of CREATED status.
+     *
+     * <p>This method includes auto-migration logic for existing sessions that were created
+     * with status CREATED. If a session is in CREATED status and attempting to transition
+     * to DRIVER_EN_ROUTE_TO_PICKUP, it will first transition to DRIVER_ACCEPTED
+     * automatically, then proceed to the target status.</p>
+     *
+     * @param request The status update request containing tracking ID and target status
+     * @param userId The ID of the user making the request
+     * @return The updated tracking session response
+     * @throws InvalidTrackingStateException If the status transition is invalid
+     * @throws AccessDeniedException If the user is not authorized
+     */
     @Override
     public TrackingSessionResponseDTO updateStatus(StatusUpdateRequestDTO request, String userId) {
         log.info("Updating status for tracking: {} to {}", request.getTrackingId(), request.getStatus());
@@ -238,15 +284,48 @@ public class TrackingServiceImpl implements TrackingService {
             throw new AccessDeniedException("You are not authorized to update this tracking");
         }
 
-        // Validate transition
-        stateValidator.validateTransition(session.getStatus(), request.getStatus());
+        // ✅ FIX: Handle CREATED status migration
+        TrackingStatus currentStatus = session.getStatus();
+        TrackingStatus targetStatus = request.getStatus();
 
-        TrackingStatus oldStatus = session.getStatus();
-        session.setStatus(request.getStatus());
+        // If the session is still CREATED and trying to go to DRIVER_EN_ROUTE_TO_PICKUP,
+        // auto-migrate through DRIVER_ACCEPTED first
+        if (currentStatus == TrackingStatus.CREATED &&
+                targetStatus == TrackingStatus.DRIVER_EN_ROUTE_TO_PICKUP) {
+            log.info("Auto-migrating CREATED session {} to DRIVER_ACCEPTED first", session.getId());
+
+            // Update to DRIVER_ACCEPTED
+            session.setStatus(TrackingStatus.DRIVER_ACCEPTED);
+            session.setLastUpdateTime(LocalDateTime.now());
+            session = trackingSessionRepository.save(session);
+
+            // Log the intermediate transition
+            try {
+                eventService.logStatusChange(
+                        session.getId(),
+                        TrackingStatus.CREATED,
+                        TrackingStatus.DRIVER_ACCEPTED,
+                        "Auto-migration from CREATED to DRIVER_ACCEPTED",
+                        userId
+                );
+            } catch (Exception e) {
+                log.warn("Could not log auto-migration event: {}", e.getMessage());
+            }
+
+            // Now validate the transition from DRIVER_ACCEPTED to the target
+            stateValidator.validateTransition(TrackingStatus.DRIVER_ACCEPTED, targetStatus);
+            currentStatus = TrackingStatus.DRIVER_ACCEPTED;
+        } else {
+            // Original validation
+            stateValidator.validateTransition(currentStatus, targetStatus);
+        }
+
+        TrackingStatus oldStatus = currentStatus;
+        session.setStatus(targetStatus);
         session.setLastUpdateTime(LocalDateTime.now());
 
         // Calculate ETA if status is IN_TRANSIT
-        if (request.getStatus() == TrackingStatus.IN_TRANSIT && request.getLatitude() != null && request.getLongitude() != null) {
+        if (targetStatus == TrackingStatus.IN_TRANSIT && request.getLatitude() != null && request.getLongitude() != null) {
             double distance = distanceService.calculateDistance(
                     request.getLatitude(), request.getLongitude(),
                     session.getOrder().getDeliveryLatitude(), session.getOrder().getDeliveryLongitude()
@@ -259,9 +338,9 @@ public class TrackingServiceImpl implements TrackingService {
         }
 
         // Special handling for terminal states
-        if (stateValidator.isTerminal(request.getStatus())) {
+        if (stateValidator.isTerminal(targetStatus)) {
             session.setEndTime(LocalDateTime.now());
-            if (request.getStatus() == TrackingStatus.DELIVERED) {
+            if (targetStatus == TrackingStatus.DELIVERED) {
                 session.setActualArrival(LocalDateTime.now());
                 session.getOrder().setDeliveryDate(LocalDateTime.now());
                 orderRepository.save(session.getOrder());
@@ -274,25 +353,25 @@ public class TrackingServiceImpl implements TrackingService {
         eventService.logStatusChange(
                 session.getId(),
                 oldStatus,
-                request.getStatus(),
+                targetStatus,
                 request.getDescription(),
                 userId
         );
 
         // Audit
         auditService.logAction(userId, "TRACKING_STATUS_CHANGED", "TrackingSession", session.getId(),
-                "Status changed from " + oldStatus + " to " + request.getStatus());
+                "Status changed from " + oldStatus + " to " + targetStatus);
 
         // Notifications
-        if (request.getStatus() == TrackingStatus.PICKED_UP) {
+        if (targetStatus == TrackingStatus.PICKED_UP) {
             notificationService.sendSystemNotification(session.getOrder().getUser().getId(), "Order Picked Up",
                     "Your order " + session.getOrder().getOrderNumber() + " has been picked up.");
-        } else if (request.getStatus() == TrackingStatus.DELIVERED) {
+        } else if (targetStatus == TrackingStatus.DELIVERED) {
             notificationService.sendSystemNotification(session.getOrder().getUser().getId(), "Order Delivered",
                     "Your order " + session.getOrder().getOrderNumber() + " has been delivered.");
             notificationService.sendSystemNotification(session.getDriver().getId(), "Delivery Completed",
                     "You have successfully delivered order " + session.getOrder().getOrderNumber());
-        } else if (request.getStatus() == TrackingStatus.CANCELLED) {
+        } else if (targetStatus == TrackingStatus.CANCELLED) {
             notificationService.sendSystemNotification(session.getOrder().getUser().getId(), "Order Cancelled",
                     "Your order " + session.getOrder().getOrderNumber() + " has been cancelled.");
         }
@@ -306,7 +385,7 @@ public class TrackingServiceImpl implements TrackingService {
         // Publish event
         eventPublisher.publishTrackingStatusChanged(session);
 
-        log.info("Status updated for tracking: {} to {}", request.getTrackingId(), request.getStatus());
+        log.info("Status updated for tracking: {} to {}", request.getTrackingId(), targetStatus);
         return trackingMapper.toResponseDTO(session);
     }
 
@@ -325,6 +404,13 @@ public class TrackingServiceImpl implements TrackingService {
         }
 
         stateValidator.validateTransition(session.getStatus(), TrackingStatus.DELIVERED);
+
+        // ✅ FIX: If session is CREATED, auto-migrate to DRIVER_ACCEPTED first
+        if (session.getStatus() == TrackingStatus.CREATED) {
+            log.info("Auto-migrating CREATED session {} to DRIVER_ACCEPTED before completing", session.getId());
+            session.setStatus(TrackingStatus.DRIVER_ACCEPTED);
+            session = trackingSessionRepository.save(session);
+        }
 
         session.setStatus(TrackingStatus.DELIVERED);
         session.setEndTime(LocalDateTime.now());
@@ -378,6 +464,13 @@ public class TrackingServiceImpl implements TrackingService {
 
         if (stateValidator.isTerminal(session.getStatus())) {
             throw new InvalidTrackingStateException("Cannot cancel a completed tracking");
+        }
+
+        // ✅ FIX: If session is CREATED, auto-migrate to DRIVER_ACCEPTED first
+        if (session.getStatus() == TrackingStatus.CREATED) {
+            log.info("Auto-migrating CREATED session {} to DRIVER_ACCEPTED before cancelling", session.getId());
+            session.setStatus(TrackingStatus.DRIVER_ACCEPTED);
+            session = trackingSessionRepository.save(session);
         }
 
         stateValidator.validateTransition(session.getStatus(), TrackingStatus.CANCELLED);
@@ -478,6 +571,25 @@ public class TrackingServiceImpl implements TrackingService {
         return toPaginatedResponse(sessions);
     }
 
+    @Override
+    public TrackingSessionResponseDTO getTrackingByOrder(String orderId) {
+        if (!StringUtils.hasText(orderId)) {
+            throw new IllegalArgumentException("Order ID is required");
+        }
+
+        log.info("Looking for tracking session by order ID: {}", orderId);
+
+        Optional<TrackingSession> session = trackingSessionRepository.findByOrderId(orderId);
+
+        if (session.isPresent()) {
+            log.info("Found tracking session: {}", session.get().getId());
+            return trackingMapper.toResponseDTO(session.get());
+        } else {
+            log.info("No tracking session found for order: {}", orderId);
+            return null;
+        }
+    }
+
     // ======================== Private Helpers ========================
 
     private TrackingSession findSession(String trackingId) {
@@ -506,20 +618,21 @@ public class TrackingServiceImpl implements TrackingService {
                 .map(trackingMapper::toResponseDTO)
                 .collect(Collectors.toList());
         return new PaginatedResponseDTO<>(content, page.getNumber(), page.getSize(), page.getTotalElements());
-
-
     }
 
-    @Override
-    public TrackingSessionResponseDTO getTrackingByOrder(String orderId) {
-        if (!StringUtils.hasText(orderId)) {
-            throw new IllegalArgumentException("Order ID is required");
-        }
-        TrackingSession session = trackingSessionRepository.findByOrderId(orderId)
-                .orElseThrow(() -> new TrackingNotFoundException("No tracking session found for order: " + orderId));
-        return trackingMapper.toResponseDTO(session);
-    }
-
+    /**
+     * Creates a new tracking session with CREATED status.
+     *
+     * <p><b>Note:</b> This method is deprecated and kept only for backward compatibility.
+     * New tracking sessions should be created using {@link #startTracking(StartTrackingRequestDTO, String)}
+     * which initializes with DRIVER_ACCEPTED status.</p>
+     *
+     * @param order The order to track
+     * @param driver The driver assigned to the order
+     * @param actorId The ID of the user creating the tracking
+     * @return The created tracking session
+     */
+    @Deprecated
     private TrackingSession createTrackingSession(
             Order order,
             Driver driver,

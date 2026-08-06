@@ -65,4 +65,8 @@ public class TrackingSession extends BaseEntity {
 
     @Column(name = "completed_at")
     private LocalDateTime completedAt;
+
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version = 0L;
 }

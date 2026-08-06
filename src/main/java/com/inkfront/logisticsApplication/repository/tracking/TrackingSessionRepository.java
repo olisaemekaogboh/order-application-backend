@@ -16,7 +16,12 @@ import java.util.Optional;
 @Repository
 public interface TrackingSessionRepository extends JpaRepository<TrackingSession, String> {
 
-    Optional<TrackingSession> findByOrderId(String orderId);
+    @Query("""
+    SELECT ts
+    FROM TrackingSession ts
+    WHERE ts.order.id = :orderId
+""")
+    Optional<TrackingSession> findByOrderId(@Param("orderId") String orderId);
 
     List<TrackingSession> findByDriverId(String driverId);
 
@@ -32,4 +37,8 @@ public interface TrackingSessionRepository extends JpaRepository<TrackingSession
 
     @Query("SELECT ts FROM TrackingSession ts WHERE ts.estimatedArrival < :now AND ts.status NOT IN ('DELIVERED', 'CANCELLED', 'FAILED')")
     List<TrackingSession> findOverdueSessions(@Param("now") LocalDateTime now);
+
+    // NEW: Find active tracking session by order ID
+    @Query("SELECT ts FROM TrackingSession ts WHERE ts.order.id = :orderId AND ts.status NOT IN ('DELIVERED', 'CANCELLED', 'FAILED')")
+    Optional<TrackingSession> findActiveByOrderId(@Param("orderId") String orderId);
 }

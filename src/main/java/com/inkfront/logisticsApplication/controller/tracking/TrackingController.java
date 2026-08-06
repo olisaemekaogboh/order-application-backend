@@ -128,6 +128,12 @@ public class TrackingController {
             @PathVariable String orderId) {
         log.info("Get tracking by order ID: {}", orderId);
         TrackingSessionResponseDTO response = trackingService.getTrackingByOrder(orderId);
+
+        if (response == null) {
+            log.info("No tracking session found for order: {}, returning empty response", orderId);
+            return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, null));
+        }
+
         return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, response));
     }
 }

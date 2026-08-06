@@ -54,4 +54,8 @@ public class TrackingLocation extends BaseEntity {
 
     @Column(name = "is_current")
     private boolean current = false;
+
+    @Version
+    @Column(name = "version", nullable = false)
+    private Long version = 0L;
 }

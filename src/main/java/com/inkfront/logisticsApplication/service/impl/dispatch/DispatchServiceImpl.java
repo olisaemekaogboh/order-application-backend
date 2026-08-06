@@ -581,7 +581,6 @@ public class DispatchServiceImpl implements DispatchService {
     public DispatchResponseDTO acceptDispatch(String dispatchId, String userId) {
 
         log.info("ID RECEIVED = {}", userId);
-
         log.info("Driver {} accepting dispatch {}", userId, dispatchId);
 
         Driver driver = driverRepository.findByUserId(userId)
@@ -589,6 +588,7 @@ public class DispatchServiceImpl implements DispatchService {
                         new ResourceNotFoundException("Driver not found"));
 
         log.info("FOUND DRIVER = {}", driver);
+        log.info("DRIVER ID = {}", driver.getId());
 
         String driverId = driver.getId();
 
@@ -630,11 +630,21 @@ public class DispatchServiceImpl implements DispatchService {
 
         dispatch = dispatchRepository.save(dispatch);
 
-        StartTrackingRequestDTO trackingRequest = new StartTrackingRequestDTO();
-        trackingRequest.setOrderId(order.getId());
-        trackingRequest.setDriverId(driverId);
+        // Start tracking - wrapped in try-catch to prevent dispatch acceptance failure
+        try {
+            StartTrackingRequestDTO trackingRequest = new StartTrackingRequestDTO();
+            trackingRequest.setOrderId(order.getId());
+            trackingRequest.setDriverId(driverId);
 
-        trackingService.startTracking(trackingRequest, driverId);
+            log.info("Starting tracking with orderId: {} and driverId: {}", order.getId(), driverId);
+
+            trackingService.startTracking(trackingRequest, driverId);
+            log.info("Tracking started successfully for order: {}", order.getId());
+        } catch (Exception e) {
+            log.error("Failed to start tracking for order {}: {}", order.getId(), e.getMessage(), e);
+            // Don't throw - dispatch acceptance should still succeed
+            // The tracking can be started later
+        }
 
         notificationService.notifyDispatchAccepted(dispatch);
         eventPublisher.publishDispatchAccepted(dispatch);
