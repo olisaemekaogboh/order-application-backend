@@ -6,16 +6,21 @@ import com.inkfront.logisticsApplication.domain.enums.TransmissionType;
 import com.inkfront.logisticsApplication.domain.enums.VehicleStatus;
 import com.inkfront.logisticsApplication.domain.enums.VehicleType;
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
+import lombok.*;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
-@EqualsAndHashCode(callSuper = true)
-@Data
+@EqualsAndHashCode(
+        callSuper = true,
+        onlyExplicitlyIncluded = true
+)
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
 @Entity
 @Table(name = "vehicles")
 public class Vehicle extends BaseEntity {

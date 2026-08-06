@@ -17,14 +17,13 @@ public interface TrackingMapper {
     @Mapping(target = "orderId", source = "order.id")
     @Mapping(target = "orderNumber", source = "order.orderNumber")
     @Mapping(target = "driverId", source = "driver.id")
-    @Mapping(target = "driverName", source = "driver.name")
+
     TrackingSessionResponseDTO toResponseDTO(TrackingSession session);
 
     // Mapping for LiveTrackingDTO
     @Mapping(target = "trackingId", source = "id")
     @Mapping(target = "orderNumber", source = "order.orderNumber")
-    @Mapping(target = "driverName", source = "driver.name")
-    @Mapping(target = "driverPhone", source = "driver.phoneNumber")
+
     @Mapping(target = "latitude", source = "currentLatitude")
     @Mapping(target = "longitude", source = "currentLongitude")
     @Mapping(target = "lastUpdate", source = "lastUpdateTime")

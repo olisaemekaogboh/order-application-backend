@@ -5,13 +5,18 @@ import com.inkfront.logisticsApplication.domain.entity.Driver;
 import com.inkfront.logisticsApplication.domain.entity.Order;
 import com.inkfront.logisticsApplication.domain.enums.TrackingStatus;
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
+import lombok.*;
 
 import java.time.LocalDateTime;
 
-@EqualsAndHashCode(callSuper = true)
-@Data
+@EqualsAndHashCode(
+        callSuper = true,
+        onlyExplicitlyIncluded = true
+)
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
 @Entity
 @Table(name = "tracking_sessions")
 public class TrackingSession extends BaseEntity {

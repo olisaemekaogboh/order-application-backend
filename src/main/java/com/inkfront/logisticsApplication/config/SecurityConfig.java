@@ -83,7 +83,11 @@ public class SecurityConfig {
                         ).hasAnyRole(
                                 "CLIENT",
                                 "ADMIN",
-                                "SUPER_ADMIN"
+                                "SUPER_ADMIN",
+                                "DRIVER",
+                                "DISPATCHER",
+                                "FLEET_MANAGER"
+
                         )
 
                         // =====================================================

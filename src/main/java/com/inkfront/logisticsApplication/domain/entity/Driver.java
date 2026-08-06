@@ -5,27 +5,24 @@ package com.inkfront.logisticsApplication.domain.entity;
 
 import com.inkfront.logisticsApplication.domain.enums.VehicleType;
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
+import lombok.*;
 
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
 
-@EqualsAndHashCode(callSuper = true)
-@Data
+@EqualsAndHashCode(
+        callSuper = true,
+        onlyExplicitlyIncluded = true
+)
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
 @Entity
 @Table(name = "drivers")
 public class Driver extends BaseEntity {
 
-    @Column(name = "name", nullable = false)
-    private String name;
-
-    @Column(name = "email", unique = true)
-    private String email;
-
-    @Column(name = "phone_number", nullable = false, unique = true)
-    private String phoneNumber;
 
     @Column(name = "license_number", nullable = false, unique = true)
     private String licenseNumber;
@@ -102,6 +99,10 @@ public class Driver extends BaseEntity {
 
     @OneToMany(mappedBy = "driver", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<Order> assignedOrders = new ArrayList<>();
+
+    @OneToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "user_id", unique = true)
+    private User user;
 
     @OneToMany(mappedBy = "driver", cascade = CascadeType.ALL, fetch = FetchType.LAZY)
     private List<DriverEarning> earnings = new ArrayList<>();

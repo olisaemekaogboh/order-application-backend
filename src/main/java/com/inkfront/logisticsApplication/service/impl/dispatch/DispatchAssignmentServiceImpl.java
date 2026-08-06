@@ -131,7 +131,7 @@ public class DispatchAssignmentServiceImpl implements DispatchAssignmentService 
         return DispatchAssignmentResult.builder()
                 .success(true)
                 .driverId(driver.getId())
-                .driverName(driver.getName())
+                .driverName(driver.getUser().getFullName())
                 .vehicleId(vehicle.getId())
                 .vehicleNumber(vehicle.getVehicleNumber())
                 .message("Best resources found.")

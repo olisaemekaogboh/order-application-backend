@@ -493,8 +493,8 @@ public class TrackingServiceImpl implements TrackingService {
                 .latitude(session.getCurrentLatitude())
                 .longitude(session.getCurrentLongitude())
                 .lastUpdate(session.getLastUpdateTime())
-                .driverName(session.getDriver().getName())
-                .driverPhone(session.getDriver().getPhoneNumber())
+                .driverName(session.getDriver().getUser().getFullName())
+                .driverPhone(session.getDriver().getUser().getPhoneNumber())
                 .estimatedArrival(session.getEstimatedArrival())
                 .etaText(session.getEstimatedArrival() != null ?
                         ChronoUnit.MINUTES.between(LocalDateTime.now(), session.getEstimatedArrival()) + " min" : null)
@@ -518,5 +518,33 @@ public class TrackingServiceImpl implements TrackingService {
         TrackingSession session = trackingSessionRepository.findByOrderId(orderId)
                 .orElseThrow(() -> new TrackingNotFoundException("No tracking session found for order: " + orderId));
         return trackingMapper.toResponseDTO(session);
+    }
+
+    private TrackingSession createTrackingSession(
+            Order order,
+            Driver driver,
+            String actorId) {
+
+        TrackingSession session = new TrackingSession();
+
+        session.setOrder(order);
+        session.setDriver(driver);
+        session.setStatus(TrackingStatus.CREATED);
+        session.setStartTime(LocalDateTime.now());
+        session.setLastUpdateTime(LocalDateTime.now());
+        session.setCurrentLatitude(driver.getCurrentLatitude());
+        session.setCurrentLongitude(driver.getCurrentLongitude());
+
+        session = trackingSessionRepository.save(session);
+
+        eventService.logStatusChange(
+                session.getId(),
+                null,
+                TrackingStatus.CREATED,
+                "Tracking started",
+                actorId
+        );
+
+        return session;
     }
 }

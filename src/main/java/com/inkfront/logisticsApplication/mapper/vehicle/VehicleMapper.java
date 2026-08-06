@@ -18,7 +18,7 @@ public interface VehicleMapper {
     Vehicle toEntity(VehicleRequestDTO dto);
 
     @Mapping(target = "currentDriverId", expression = "java(vehicle.getAssignments().stream().filter(VehicleAssignment::isActive).findFirst().map(a -> a.getDriver().getId()).orElse(null))")
-    @Mapping(target = "currentDriverName", expression = "java(vehicle.getAssignments().stream().filter(VehicleAssignment::isActive).findFirst().map(a -> a.getDriver().getName()).orElse(null))")
+    @Mapping(target = "currentDriverName", expression = "java(vehicle.getAssignments().stream().filter(VehicleAssignment::isActive).findFirst().map(a -> a.getDriver().getUser().getFullName()).orElse(null))")
     VehicleResponseDTO toResponseDTO(Vehicle vehicle);
 
     VehicleSummaryDTO toSummaryDTO(Vehicle vehicle);
@@ -29,8 +29,7 @@ public interface VehicleMapper {
     @Mapping(target = "vehicleId", source = "vehicle.id")
     @Mapping(target = "vehicleNumber", source = "vehicle.vehicleNumber")
     @Mapping(target = "driverId", source = "driver.id")
-    @Mapping(target = "driverName", source = "driver.name")
-    @Mapping(target = "driverPhone", source = "driver.phoneNumber")
+
     VehicleAssignmentDTO toAssignmentDTO(VehicleAssignment assignment);
 
     // Maintenance

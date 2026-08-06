@@ -14,29 +14,46 @@ import java.time.LocalDateTime;
 @Builder
 public class DispatchSummaryDTO {
 
-    // Dispatch
+    // =========================
+    // Dispatch Information
+    // =========================
     private String id;
     private DispatchStatus status;
     private Integer priority;
     private Integer retryCount;
 
-    // Order
+    // =========================
+    // Order Information
+    // =========================
     private String orderId;
     private String orderNumber;
     private String pickupLocation;
     private String deliveryLocation;
 
-    // Driver
+    // Customer Information
+    private String customerName;
+    private String customerPhone;
+
+    // =========================
+    // Driver Information
+    // =========================
     private String driverId;
     private String driverName;
 
-    // Vehicle
+    // =========================
+    // Vehicle Information
+    // =========================
     private String vehicleId;
     private String vehicleNumber;
 
+    // =========================
     // Dates
+    // =========================
     private LocalDateTime createdAt;
     private LocalDateTime assignedAt;
     private LocalDateTime acceptedAt;
     private LocalDateTime completedAt;
+    private LocalDateTime pickupCompletedAt;
+
+    private LocalDateTime deliveryStartedAt;
 }

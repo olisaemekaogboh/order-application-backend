@@ -202,8 +202,8 @@ public class DispatchNotificationServiceImpl implements DispatchNotificationServ
 
         if (dispatch.getDriverId() != null) {
             driverRepository.findById(dispatch.getDriverId()).ifPresent(driver -> {
-                dto.setDriverName(driver.getName());
-                dto.setDriverPhone(driver.getPhoneNumber());
+                dto.setDriverName(driver.getUser().getFullName());
+                dto.setDriverPhone(driver.getUser().getPhoneNumber());
                 dto.setDriverLatitude(driver.getCurrentLatitude());
                 dto.setDriverLongitude(driver.getCurrentLongitude());
             });

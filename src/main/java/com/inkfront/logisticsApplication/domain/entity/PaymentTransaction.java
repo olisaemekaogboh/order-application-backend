@@ -5,15 +5,20 @@ import com.inkfront.logisticsApplication.domain.enums.PaymentMethod;
 import com.inkfront.logisticsApplication.domain.enums.PaymentStatus;
 import com.vladmihalcea.hibernate.type.json.JsonStringType;
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
+import lombok.*;
 import org.hibernate.annotations.Type;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
-@EqualsAndHashCode(callSuper = true)
-@Data
+@EqualsAndHashCode(
+        callSuper = true,
+        onlyExplicitlyIncluded = true
+)
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
 @Entity
 @Table(name = "payment_transactions")
 public class PaymentTransaction extends BaseEntity {

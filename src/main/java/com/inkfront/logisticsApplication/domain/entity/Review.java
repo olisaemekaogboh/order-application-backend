@@ -4,13 +4,18 @@ import com.inkfront.logisticsApplication.domain.enums.ModerationStatus;
 import com.inkfront.logisticsApplication.domain.enums.ReviewStatus;
 import com.inkfront.logisticsApplication.domain.enums.ReviewType;
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
+import lombok.*;
 
 import java.time.LocalDateTime;
 
-@EqualsAndHashCode(callSuper = true)
-@Data
+@EqualsAndHashCode(
+        callSuper = true,
+        onlyExplicitlyIncluded = true
+)
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
 @Entity
 @Table(name = "reviews")
 public class Review extends BaseEntity {

@@ -2,13 +2,18 @@ package com.inkfront.logisticsApplication.domain.entity.vehicle;
 
 import com.inkfront.logisticsApplication.domain.entity.BaseEntity;
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
+import lombok.*;
 
 import java.time.LocalDate;
 
-@EqualsAndHashCode(callSuper = true)
-@Data
+@EqualsAndHashCode(
+        callSuper = true,
+        onlyExplicitlyIncluded = true
+)
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
 @Entity
 @Table(name = "vehicle_inspections")
 public class VehicleInspection extends BaseEntity {

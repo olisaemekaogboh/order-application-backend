@@ -102,6 +102,6 @@ public class VehicleEventListener {
     // Helper to get current driver name from active assignment
     private String getCurrentDriverName(String vehicleId) {
         Optional<VehicleAssignment> assignment = assignmentRepository.findByVehicleIdAndActiveTrue(vehicleId);
-        return assignment.map(a -> a.getDriver().getName()).orElse("Unknown");
+        return assignment.map(a -> a.getDriver().getUser().getFullName()).orElse("Unknown");
     }
 }

@@ -92,17 +92,34 @@ public class DispatchController {
     // ============================================
     // DRIVER ACTION ENDPOINTS
     // ============================================
-
     @PostMapping("/{dispatchId}/accept")
     @Operation(summary = "Accept a dispatch (driver)")
     @PreAuthorize("hasRole('DRIVER')")
     public ResponseEntity<ApiResponseDTO<DispatchResponseDTO>> acceptDispatch(
             @PathVariable String dispatchId,
             Authentication authentication) {
-        AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
-        log.info("Accept dispatch {} by driver: {}", dispatchId, user.getId());
-        DispatchResponseDTO response = dispatchService.acceptDispatch(dispatchId, user.getId());
-        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.OPERATION_SUCCESS, response));
+
+        AuthenticatedUser user =
+                (AuthenticatedUser) authentication.getPrincipal();
+
+        log.info(
+                "Accept dispatch {} by driver userId={}",
+                dispatchId,
+                user.getId()
+        );
+
+        DispatchResponseDTO response =
+                dispatchService.acceptDispatch(
+                        dispatchId,
+                        user.getId()
+                );
+
+        return ResponseEntity.ok(
+                ApiResponseDTO.success(
+                        SuccessMessages.OPERATION_SUCCESS,
+                        response
+                )
+        );
     }
 
     @PostMapping("/{dispatchId}/reject")
@@ -112,11 +129,33 @@ public class DispatchController {
             @PathVariable String dispatchId,
             @RequestParam String reason,
             Authentication authentication) {
-        AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
-        log.info("Reject dispatch {} by driver: {} reason: {}", dispatchId, user.getId(), reason);
-        DispatchResponseDTO response = dispatchService.rejectDispatch(dispatchId, reason, user.getId());
-        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.OPERATION_SUCCESS, response));
+
+        AuthenticatedUser user =
+                (AuthenticatedUser) authentication.getPrincipal();
+
+        log.info(
+                "Reject dispatch {} by driver userId={} reason={}",
+                dispatchId,
+                user.getId(),
+                reason
+        );
+
+        DispatchResponseDTO response =
+                dispatchService.rejectDispatch(
+                        dispatchId,
+                        reason,
+                        user.getId()
+                );
+
+        return ResponseEntity.ok(
+                ApiResponseDTO.success(
+                        SuccessMessages.OPERATION_SUCCESS,
+                        response
+                )
+        );
     }
+
+
 
     // ============================================
     // ADMIN ACTION ENDPOINTS
@@ -134,30 +173,70 @@ public class DispatchController {
         return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.OPERATION_SUCCESS, response));
     }
 
-    @PostMapping("/{dispatchId}/cancel")
-    @Operation(summary = "Cancel a dispatch")
-    @PreAuthorize("hasAnyRole('ADMIN','DISPATCHER','DRIVER')")
-    public ResponseEntity<ApiResponseDTO<DispatchResponseDTO>> cancelDispatch(
-            @PathVariable String dispatchId,
-            @Valid @RequestBody CancelDispatchRequestDTO request,
-            Authentication authentication) {
-        AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
-        log.info("Cancel dispatch {} by user: {} reason: {}", dispatchId, user.getId(), request.getReason());
-        DispatchResponseDTO response = dispatchService.cancelDispatch(dispatchId, request.getReason(), user.getId());
-        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.OPERATION_SUCCESS, response));
-    }
-
     @PostMapping("/{dispatchId}/complete")
     @Operation(summary = "Complete a dispatch")
     @PreAuthorize("hasAnyRole('ADMIN','DISPATCHER','DRIVER')")
     public ResponseEntity<ApiResponseDTO<DispatchResponseDTO>> completeDispatch(
             @PathVariable String dispatchId,
             Authentication authentication) {
-        AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
-        log.info("Complete dispatch {} by user: {}", dispatchId, user.getId());
-        DispatchResponseDTO response = dispatchService.completeDispatch(dispatchId, user.getId());
-        return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.OPERATION_SUCCESS, response));
+
+        AuthenticatedUser user =
+                (AuthenticatedUser) authentication.getPrincipal();
+
+        log.info(
+                "Complete dispatch {} by userId={}",
+                dispatchId,
+                user.getId()
+        );
+
+        DispatchResponseDTO response =
+                dispatchService.completeDispatch(
+                        dispatchId,
+                        user.getId()
+                );
+
+        return ResponseEntity.ok(
+                ApiResponseDTO.success(
+                        SuccessMessages.OPERATION_SUCCESS,
+                        response
+                )
+        );
     }
+
+    @PostMapping("/{dispatchId}/cancel")
+    @Operation(summary = "Cancel a dispatch")
+    @PreAuthorize("hasAnyRole('ADMIN','DISPATCHER','DRIVER')")
+    public ResponseEntity<ApiResponseDTO<DispatchResponseDTO>> cancelDispatch(
+            @PathVariable String dispatchId,
+            @RequestParam String reason,
+            Authentication authentication) {
+
+        AuthenticatedUser user =
+                (AuthenticatedUser) authentication.getPrincipal();
+
+        log.info(
+                "Cancel dispatch {} by userId={} reason={}",
+                dispatchId,
+                user.getId(),
+                reason
+        );
+
+        DispatchResponseDTO response =
+                dispatchService.cancelDispatch(
+                        dispatchId,
+                        reason,
+                        user.getId()
+                );
+
+        return ResponseEntity.ok(
+                ApiResponseDTO.success(
+                        SuccessMessages.OPERATION_SUCCESS,
+                        response
+                )
+        );
+    }
+
+
 
     // ============================================
     // GET ENDPOINTS
@@ -225,4 +304,30 @@ public class DispatchController {
         List<OrderResponseDTO> orders = orderService.getOrdersByStatus(OrderStatus.READY_FOR_DISPATCH);
         return ResponseEntity.ok(ApiResponseDTO.success(SuccessMessages.DATA_RETRIEVED, orders));
     }
+    @GetMapping("/me")
+    @PreAuthorize("hasRole('DRIVER')")
+    @Operation(summary = "Get authenticated driver's dispatches")
+    public ResponseEntity<ApiResponseDTO<PaginatedResponseDTO<DispatchSummaryDTO>>> getMyDispatches(
+            Authentication authentication,
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "20") int size) {
+
+        AuthenticatedUser user =
+                (AuthenticatedUser) authentication.getPrincipal();
+
+        PaginatedResponseDTO<DispatchSummaryDTO> response =
+                dispatchService.getMyDispatches(
+                        user.getId(),
+                        page,
+                        size
+                );
+
+        return ResponseEntity.ok(
+                ApiResponseDTO.success(
+                        SuccessMessages.DATA_RETRIEVED,
+                        response
+                )
+        );
+    }
+
 }

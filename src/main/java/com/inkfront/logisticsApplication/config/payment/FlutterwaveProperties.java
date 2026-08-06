@@ -27,16 +27,16 @@ public class FlutterwaveProperties {
     @Value("${payment.flutterwave.callback-url:http://localhost:3000/payment/callback}")
     private String callbackUrl;
 
-    @PostConstruct
-    public void init() {
-        log.info("========================================");
-        log.info("🌊 FLUTTERWAVE PROPERTIES LOADED");
-        log.info("Base URL: {}", baseUrl);
-        log.info("Secret Key: {}", maskKey(secretKey));
-        log.info("Public Key: {}", maskKey(publicKey));
-        log.info("Encryption Key: {}", maskKey(encryptionKey));
-        log.info("========================================");
-    }
+//    @PostConstruct
+//    public void init() {
+//        log.info("========================================");
+//        log.info("🌊 FLUTTERWAVE PROPERTIES LOADED");
+//        log.info("Base URL: {}", baseUrl);
+//        log.info("Secret Key: {}", maskKey(secretKey));
+//        log.info("Public Key: {}", maskKey(publicKey));
+//        log.info("Encryption Key: {}", maskKey(encryptionKey));
+//        log.info("========================================");
+//    }
 
     private String maskKey(String key) {
         if (key == null) return "NULL";

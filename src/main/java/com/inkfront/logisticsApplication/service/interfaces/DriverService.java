@@ -3,6 +3,7 @@ package com.inkfront.logisticsApplication.service.interfaces;
 import com.inkfront.logisticsApplication.dto.request.driver.*;
 import com.inkfront.logisticsApplication.dto.response.common.PaginatedResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.driver.DriverDTO;
+import com.inkfront.logisticsApplication.dto.response.driver.DriverDashboardDTO;
 import com.inkfront.logisticsApplication.dto.response.driver.DriverEarningDTO;
 
 import java.util.List;
@@ -59,4 +60,6 @@ public interface DriverService {
     PaginatedResponseDTO<DriverDTO> getUnavailableDrivers(int page, int size);
 
     DriverDTO verifyDriver(String driverId);
+
+    DriverDashboardDTO getDriverDashboard(String driverId);
 }

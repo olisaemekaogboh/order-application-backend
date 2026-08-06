@@ -301,7 +301,7 @@ public class PaymentServiceImpl implements PaymentService {
 
                 trackingService.startTracking(trackingRequest, userId);
                 log.info("✅ Tracking started for order: {} with driver: {}",
-                        order.getId(), availableDriver.getName());
+                        order.getId(), availableDriver.getUser().getFullName());
             } else {
                 log.warn("⚠️ No driver available for order: {}. Order is in ASSIGNED state waiting for driver assignment.",
                         order.getId());

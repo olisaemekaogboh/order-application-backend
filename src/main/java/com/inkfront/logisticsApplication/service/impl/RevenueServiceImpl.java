@@ -465,7 +465,7 @@ public class RevenueServiceImpl implements RevenueService {
         }
 
         String driverName = driverRepository.findById(request.getDriverId())
-                .map(d -> d.getName() )
+                .map(d -> d.getUser().getFullName() )
                 .orElse("Unknown");
 
         return DriverEarningsReportDTO.builder()

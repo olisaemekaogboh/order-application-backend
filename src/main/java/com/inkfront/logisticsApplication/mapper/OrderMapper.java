@@ -36,9 +36,9 @@ public abstract class OrderMapper {
     @Mapping(target = "user", ignore = true)
     @Mapping(target = "driver", ignore = true)
     @Mapping(target = "driverName",
-            expression = "java(order.getDriver() != null ? order.getDriver().getName() : null)")
+            expression = "java(order.getDriver() != null ? order.getDriver().getUser().getFullName() : null)")
     @Mapping(target = "driverPhone",
-            expression = "java(order.getDriver() != null ? order.getDriver().getPhoneNumber() : null)")
+            expression = "java(order.getDriver() != null ? order.getDriver().getUser().getPhoneNumber() : null)")
     @Mapping(target = "statusDisplayName",
             expression = "java(order.getStatus().getDisplayName())")
     @Mapping(target = "isDelivered",
@@ -98,9 +98,9 @@ public abstract class OrderMapper {
 
     // Driver info - from driver entity
     @Mapping(target = "driverName",
-            expression = "java(order.getDriver() != null ? order.getDriver().getName() : null)")
+            expression = "java(order.getDriver() != null ? order.getDriver().getUser().getFullName() : null)")
     @Mapping(target = "driverPhone",
-            expression = "java(order.getDriver() != null ? order.getDriver().getPhoneNumber() : null)")
+            expression = "java(order.getDriver() != null ? order.getDriver().getUser().getPhoneNumber() : null)")
     @Mapping(target = "driverPhoto", ignore = true)
 
     // Location info - from driver entity

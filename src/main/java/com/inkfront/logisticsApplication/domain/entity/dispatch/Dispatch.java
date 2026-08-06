@@ -6,13 +6,18 @@ import com.inkfront.logisticsApplication.domain.entity.Order;
 import com.inkfront.logisticsApplication.domain.entity.vehicle.Vehicle;
 import com.inkfront.logisticsApplication.domain.enums.DispatchStatus;
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
+import lombok.*;
 
 import java.time.LocalDateTime;
 
-@EqualsAndHashCode(callSuper = true)
-@Data
+@EqualsAndHashCode(
+        callSuper = true,
+        onlyExplicitlyIncluded = true
+)
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
 @Entity
 @Table(name = "dispatches")
 public class Dispatch extends BaseEntity {

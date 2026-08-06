@@ -2,35 +2,46 @@ package com.inkfront.logisticsApplication.service.impl;
 
 import com.inkfront.logisticsApplication.domain.entity.Driver;
 import com.inkfront.logisticsApplication.domain.entity.DriverEarning;
+import com.inkfront.logisticsApplication.domain.entity.User;
+import com.inkfront.logisticsApplication.domain.entity.dispatch.Dispatch;
+import com.inkfront.logisticsApplication.domain.enums.UserRole;
 import com.inkfront.logisticsApplication.domain.enums.VehicleType;
 import com.inkfront.logisticsApplication.dto.request.driver.DriverAvailabilityRequestDTO;
 import com.inkfront.logisticsApplication.dto.request.driver.DriverLocationRequestDTO;
 import com.inkfront.logisticsApplication.dto.request.driver.DriverRegistrationRequestDTO;
 import com.inkfront.logisticsApplication.dto.request.driver.DriverUpdateRequestDTO;
 import com.inkfront.logisticsApplication.dto.response.common.PaginatedResponseDTO;
+import com.inkfront.logisticsApplication.dto.response.dispatch.DispatchSummaryDTO;
 import com.inkfront.logisticsApplication.dto.response.driver.DriverDTO;
+import com.inkfront.logisticsApplication.dto.response.driver.DriverDashboardDTO;
 import com.inkfront.logisticsApplication.dto.response.driver.DriverEarningDTO;
 import com.inkfront.logisticsApplication.exception.BadRequestException;
 import com.inkfront.logisticsApplication.exception.DuplicateResourceException;
 import com.inkfront.logisticsApplication.exception.ResourceNotFoundException;
 import com.inkfront.logisticsApplication.mapper.DriverMapper;
 import com.inkfront.logisticsApplication.mapper.DriverEarningMapper;
+import com.inkfront.logisticsApplication.mapper.dispatch.DispatchMapper;
 import com.inkfront.logisticsApplication.repository.DriverRepository;
 import com.inkfront.logisticsApplication.repository.DriverEarningRepository;
+import com.inkfront.logisticsApplication.repository.UserRepository;
+import com.inkfront.logisticsApplication.repository.dispatch.DispatchRepository;
 import com.inkfront.logisticsApplication.service.interfaces.DriverService;
 import com.inkfront.logisticsApplication.domain.constants.ErrorMessages;
 
+import com.inkfront.logisticsApplication.service.interfaces.dispatch.DispatchService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 @Slf4j
@@ -43,32 +54,69 @@ public class DriverServiceImpl implements DriverService {
     private final DriverEarningRepository driverEarningRepository;
     private final DriverMapper driverMapper;
     private final DriverEarningMapper driverEarningMapper;
+   private final DispatchService dispatchService;
+    private final DispatchRepository dispatchRepository;
+    private final DispatchMapper dispatchMapper;
+    private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
     @Override
+    @Transactional
     public DriverDTO registerDriver(DriverRegistrationRequestDTO registrationRequest) {
+
         log.info("Registering new driver: {}", registrationRequest.getEmail());
 
-        // Check for duplicates
+        // Driver validation
         if (driverRepository.existsByEmail(registrationRequest.getEmail())) {
-            throw new DuplicateResourceException("Driver with email " + registrationRequest.getEmail() + " already exists");
+            throw new DuplicateResourceException(
+                    "Driver with email already exists");
         }
 
         if (driverRepository.existsByPhoneNumber(registrationRequest.getPhoneNumber())) {
-            throw new DuplicateResourceException("Driver with phone number " + registrationRequest.getPhoneNumber() + " already exists");
+            throw new DuplicateResourceException(
+                    "Phone number already exists");
         }
 
         if (driverRepository.existsByLicenseNumber(registrationRequest.getLicenseNumber())) {
-            throw new DuplicateResourceException("Driver with license number " + registrationRequest.getLicenseNumber() + " already exists");
+            throw new DuplicateResourceException(
+                    "License already exists");
         }
 
-        if (driverRepository.existsByVehiclePlateNumber(registrationRequest.getVehiclePlateNumber())) {
-            throw new DuplicateResourceException("Vehicle with plate number " + registrationRequest.getVehiclePlateNumber() + " already exists");
+        if (driverRepository.existsByVehiclePlateNumber(
+                registrationRequest.getVehiclePlateNumber())) {
+            throw new DuplicateResourceException(
+                    "Vehicle plate already exists");
         }
+
+        // -------------------------------------------------
+        // Create User
+        // -------------------------------------------------
+
+        User user = new User();
+
+        user.setFirstName(registrationRequest.getFirstName());
+        user.setLastName(registrationRequest.getLastName());
+        user.setEmail(registrationRequest.getEmail());
+        user.setPhoneNumber(registrationRequest.getPhoneNumber());
+
+        user.setRole(UserRole.DRIVER);
+
+        user.setPassword(
+                passwordEncoder.encode(registrationRequest.getPassword())
+        );
+
+        user = userRepository.save(user);
+
+        // -------------------------------------------------
+        // Create Driver
+        // -------------------------------------------------
 
         Driver driver = driverMapper.toEntity(registrationRequest);
+
+        driver.setUser(user);   // <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
         driver = driverRepository.save(driver);
 
-        log.info("Driver registered successfully: {}", driver.getId());
         return driverMapper.toDTO(driver);
     }
 
@@ -80,7 +128,7 @@ public class DriverServiceImpl implements DriverService {
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.DRIVER_NOT_FOUND));
 
         if (updateRequest.getPhoneNumber() != null
-                && !updateRequest.getPhoneNumber().equals(driver.getPhoneNumber())
+                && !updateRequest.getPhoneNumber().equals(driver.getUser().getPhoneNumber())
                 && driverRepository.existsByPhoneNumber(updateRequest.getPhoneNumber())) {
             throw new DuplicateResourceException("Phone number already exists");
         }
@@ -112,8 +160,8 @@ public class DriverServiceImpl implements DriverService {
     }
 
     @Override
-    public DriverDTO getDriverByEmail(String email) {
-        Driver driver = driverRepository.findByEmail(email)
+    public DriverDTO getDriverByEmail(String userId) {
+        Driver driver = driverRepository.findByUserId(userId)
                 .orElseThrow(() -> new ResourceNotFoundException(ErrorMessages.DRIVER_NOT_FOUND));
         return driverMapper.toDTO(driver);
     }
@@ -380,5 +428,52 @@ public class DriverServiceImpl implements DriverService {
         driver = driverRepository.save(driver);
 
         return driverMapper.toDTO(driver);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public DriverDashboardDTO getDriverDashboard(String userId) {
+
+        Driver driver = driverRepository.findByUserId(userId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Driver not found"));
+        String driverId = driver.getId();
+
+        List<DispatchSummaryDTO> recentDispatches =
+                dispatchRepository.findByDriverId(
+                                driverId,
+                                PageRequest.of(
+                                        0,
+                                        5,
+                                        Sort.by(Sort.Direction.DESC, "createdAt")
+                                )
+                        ).getContent()
+                        .stream()
+                        .map(dispatchMapper::toSummaryDTO)
+                        .toList();
+
+        return DriverDashboardDTO.builder()
+                .driver(driverMapper.toDTO(driver))
+                .currentDispatch(dispatchService.getCurrentDispatchForDriver(driverId))
+                .recentDispatches(recentDispatches)
+                .activeDispatches(dispatchService.countActiveDispatches(driverId))
+                .completedDispatches(dispatchService.countCompletedDispatches(driverId))
+                .totalDeliveries(
+                        driverRepository.countCompletedDeliveries(driverId).intValue()
+                )
+                .totalEarnings(
+                        Optional.ofNullable(
+                                driverEarningRepository.sumTotalEarnings(driverId)
+                        ).orElse(0.0)
+                )
+                .unpaidEarnings(
+                        Optional.ofNullable(
+                                driverEarningRepository.sumUnpaidEarnings(driverId)
+                        ).orElse(0.0)
+                )
+                .rating(driver.getRating())
+                .available(driver.getAvailable())
+                .currentLocation(driver.getCurrentLocation())
+                .build();
     }
 }

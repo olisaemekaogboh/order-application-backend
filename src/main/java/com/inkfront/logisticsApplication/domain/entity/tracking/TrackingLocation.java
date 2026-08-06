@@ -2,13 +2,18 @@ package com.inkfront.logisticsApplication.domain.entity.tracking;
 
 import com.inkfront.logisticsApplication.domain.entity.BaseEntity;
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
+import lombok.*;
 
 import java.time.LocalDateTime;
 
-@EqualsAndHashCode(callSuper = true)
-@Data
+@EqualsAndHashCode(
+        callSuper = true,
+        onlyExplicitlyIncluded = true
+)
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
 @Entity
 @Table(name = "tracking_locations")
 public class TrackingLocation extends BaseEntity {

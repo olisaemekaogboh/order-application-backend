@@ -142,4 +142,30 @@ AND completed_at IS NOT NULL
     """)
     List<Dispatch> findActiveDispatchesByVehicleId(
             @Param("vehicleId") String vehicleId);
+
+    @Query("""
+SELECT d
+FROM Dispatch d
+WHERE d.driverId = :driverId
+AND d.status='DELIVERED'
+ORDER BY d.completedAt DESC
+""")
+    List<Dispatch> findCompletedDispatchesByDriverId(
+            @Param("driverId") String driverId);
+
+    @Query("""
+SELECT d
+FROM Dispatch d
+WHERE d.driverId=:driverId
+AND d.status IN (
+'WAITING_DRIVER_ACCEPTANCE',
+'DRIVER_ACCEPTED',
+'EN_ROUTE_PICKUP',
+'PICKUP_COMPLETED',
+'DELIVERY_IN_PROGRESS'
+)
+ORDER BY d.createdAt DESC
+""")
+    Optional<Dispatch> findCurrentDispatch(
+            @Param("driverId") String driverId);
 }

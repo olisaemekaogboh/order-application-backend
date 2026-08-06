@@ -81,14 +81,14 @@ public class DispatchAssignmentOrchestrator {
                 DispatchStatus.WAITING_DRIVER_ACCEPTANCE,
                 assignedBy,
                 "Driver assigned: "
-                        + driver.getName()
+                        + driver.getUser().getFullName()
                         + ", Vehicle: "
                         + vehicle.getVehicleNumber()
         );
 
         notificationService.notifyDriverAssigned(
                 dispatch,
-                driver.getName()
+                driver.getUser().getFullName()
         );
 
         notificationService.notifyVehicleAssigned(
@@ -127,7 +127,7 @@ public class DispatchAssignmentOrchestrator {
         return DispatchAssignmentResult.builder()
                 .success(true)
                 .driverId(driver.getId())
-                .driverName(driver.getName())
+                .driverName(driver.getUser().getFullName())
                 .vehicleId(vehicle.getId())
                 .vehicleNumber(vehicle.getVehicleNumber())
                 .message("Dispatch assigned successfully")

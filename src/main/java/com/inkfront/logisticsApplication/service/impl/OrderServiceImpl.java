@@ -387,7 +387,7 @@ public class OrderServiceImpl implements OrderService {
                 assigned.setStatus(OrderStatus.DISPATCH);
                 assigned.setStatusDisplayName("Driver Assigned");
                 assigned.setTimestamp(order.getUpdatedAt());
-                assigned.setDescription("Driver " + order.getDriver().getName() + " assigned to your order");
+                assigned.setDescription("Driver " + order.getDriver().getUser().getFullName() + " assigned to your order");
                 assigned.setLocation(order.getPickupLocation());
                 history.add(assigned);
             }
@@ -516,7 +516,7 @@ public class OrderServiceImpl implements OrderService {
         notificationService.sendDriverAssignmentNotification(
                 order.getUser().getId(),
                 order.getId(),
-                driver.getName());
+                driver.getUser().getFullName());
 
         notificationService.sendDriverAssignmentNotification(
                 driver.getId(),

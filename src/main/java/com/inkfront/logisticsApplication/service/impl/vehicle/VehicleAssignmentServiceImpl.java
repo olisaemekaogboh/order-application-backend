@@ -74,12 +74,12 @@ public class VehicleAssignmentServiceImpl implements VehicleAssignmentService {
         eventPublisher.publishVehicleAssigned(vehicle);
 
         auditService.logAction(userId, "VEHICLE_ASSIGNED", "VehicleAssignment", assignment.getId(),
-                "Assigned driver " + driver.getName() + " to vehicle " + vehicle.getVehicleNumber());
+                "Assigned driver " + driver.getUser().getFullName() + " to vehicle " + vehicle.getVehicleNumber());
 
         notificationService.sendSystemNotification(driver.getId(), "Vehicle Assigned",
                 "You have been assigned to vehicle " + vehicle.getVehicleNumber());
         notificationService.sendSystemNotification(userId, "Vehicle Assignment",
-                "Vehicle " + vehicle.getVehicleNumber() + " assigned to " + driver.getName());
+                "Vehicle " + vehicle.getVehicleNumber() + " assigned to " + driver.getUser().getFullName());
 
         return vehicleMapper.toAssignmentDTO(assignment);
     }
@@ -106,7 +106,7 @@ public class VehicleAssignmentServiceImpl implements VehicleAssignmentService {
         eventPublisher.publishVehicleReleased(vehicle);
 
         auditService.logAction(userId, "VEHICLE_RELEASED", "VehicleAssignment", assignment.getId(),
-                "Released vehicle " + vehicle.getVehicleNumber() + " from driver " + assignment.getDriver().getName());
+                "Released vehicle " + vehicle.getVehicleNumber() + " from driver " + assignment.getDriver().getUser().getFullName());
 
         notificationService.sendSystemNotification(assignment.getDriver().getId(), "Vehicle Released",
                 "You have been released from vehicle " + vehicle.getVehicleNumber());

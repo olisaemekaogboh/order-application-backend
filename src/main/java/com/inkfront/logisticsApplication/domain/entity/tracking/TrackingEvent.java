@@ -4,13 +4,18 @@ import com.inkfront.logisticsApplication.domain.entity.BaseEntity;
 import com.inkfront.logisticsApplication.domain.entity.User;
 import com.inkfront.logisticsApplication.domain.enums.TrackingStatus;
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
+import lombok.*;
 
 import java.time.LocalDateTime;
 
-@EqualsAndHashCode(callSuper = true)
-@Data
+@EqualsAndHashCode(
+        callSuper = true,
+        onlyExplicitlyIncluded = true
+)
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
 @Entity
 @Table(name = "tracking_events")
 public class TrackingEvent extends BaseEntity {

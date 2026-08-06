@@ -10,7 +10,7 @@ import java.util.List;
 public abstract class DriverEarningMapper {
 
     @Mapping(target = "driverId", source = "driver.id")
-    @Mapping(target = "driverName", source = "driver.name")
+
     @Mapping(target = "orderId", source = "order.id")
     @Mapping(target = "orderNumber", source = "order.orderNumber")
     @Mapping(target = "formattedAmount", expression = "java(formatCurrency(earning.getAmount(), earning.getCurrency()))")

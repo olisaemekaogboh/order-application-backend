@@ -141,10 +141,10 @@ public class OrderEventListener {
                 );
 
                 // Send SMS to driver
-                if (order.getDriver().getPhoneNumber() != null) {
+                if (order.getDriver().getUser().getPhoneNumber() != null) {
                     try {
                         smsService.sendDriverAssignmentSms(
-                                order.getDriver().getPhoneNumber(),
+                                order.getDriver().getUser().getPhoneNumber(),
                                 order.getOrderNumber(),
                                 "Order assigned to you",
                                 ""

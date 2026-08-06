@@ -36,4 +36,12 @@ public interface DispatchService {
     PaginatedResponseDTO<DispatchSummaryDTO> getAllDispatches(int page, int size, String status, String sortBy, String sortDirection);
 
     DispatchAnalyticsDTO getDispatchAnalytics();
+
+    DispatchSummaryDTO getCurrentDispatchForDriver(String driverId);
+
+    long countActiveDispatches(String driverId);
+
+    long countCompletedDispatches(String driverId);
+
+    PaginatedResponseDTO<DispatchSummaryDTO> getMyDispatches(String email, int page, int size);
 }

@@ -8,10 +8,12 @@ import com.inkfront.logisticsApplication.dto.request.driver.DriverUpdateRequestD
 import com.inkfront.logisticsApplication.dto.response.common.ApiResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.common.PaginatedResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.driver.DriverDTO;
+import com.inkfront.logisticsApplication.dto.response.driver.DriverDashboardDTO;
 import com.inkfront.logisticsApplication.dto.response.driver.DriverEarningDTO;
 import com.inkfront.logisticsApplication.service.interfaces.DriverService;
 import com.inkfront.logisticsApplication.domain.constants.SuccessMessages;
 import com.inkfront.logisticsApplication.security.AuthenticatedUser;
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
@@ -252,27 +254,22 @@ public class DriverController {
     }
 
     @GetMapping("/me/earnings/unpaid")
-    @Operation(summary = "Get current driver unpaid earnings")
-    public ResponseEntity<ApiResponseDTO<Double>> getDriverUnpaidEarnings(
+    public ResponseEntity<ApiResponseDTO<Double>> getMyUnpaidEarnings(
             Authentication authentication) {
 
         AuthenticatedUser user =
                 (AuthenticatedUser) authentication.getPrincipal();
 
-        log.info("Get unpaid earnings for driver: {}", user.getEmail());
-
-        Double response =
-                driverService.getDriverUnpaidEarnings(
-                        user.getId()
-                );
-
         return ResponseEntity.ok(
                 ApiResponseDTO.success(
-                        "Unpaid earnings retrieved",
-                        response
+                        SuccessMessages.DATA_RETRIEVED,
+                        driverService.getDriverUnpaidEarnings(user.getId())
                 )
         );
     }
+
+
+
 
     @GetMapping("/stats")
     @Operation(summary = "Get driver statistics")
@@ -283,6 +280,25 @@ public class DriverController {
         stats.setAvailableDrivers(driverService.countAvailableDrivers());
         stats.setAverageRating(driverService.getAverageDriverRating());
         return ResponseEntity.ok(ApiResponseDTO.success("Driver stats retrieved", stats));
+    }
+
+
+    @GetMapping("/me/dashboard")
+    @PreAuthorize("hasRole('DRIVER')")
+    public ResponseEntity<ApiResponseDTO<DriverDashboardDTO>> getDashboard(
+            Authentication authentication) {
+
+        AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
+
+        DriverDashboardDTO dashboard =
+                driverService.getDriverDashboard(user.getId());
+
+        return ResponseEntity.ok(
+                ApiResponseDTO.success(
+                        SuccessMessages.DATA_RETRIEVED,
+                        dashboard
+                )
+        );
     }
 
     @Data

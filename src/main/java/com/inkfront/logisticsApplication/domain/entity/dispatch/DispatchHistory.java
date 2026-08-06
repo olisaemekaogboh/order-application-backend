@@ -3,13 +3,18 @@ package com.inkfront.logisticsApplication.domain.entity.dispatch;
 import com.inkfront.logisticsApplication.domain.entity.BaseEntity;
 import com.inkfront.logisticsApplication.domain.enums.DispatchStatus;
 import jakarta.persistence.*;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
+import lombok.*;
 
 import java.time.LocalDateTime;
 
-@EqualsAndHashCode(callSuper = true)
-@Data
+@EqualsAndHashCode(
+        callSuper = true,
+        onlyExplicitlyIncluded = true
+)
+@Getter
+@Setter
+@NoArgsConstructor
+@AllArgsConstructor
 @Entity
 @Table(name = "dispatch_histories")
 public class DispatchHistory extends BaseEntity {

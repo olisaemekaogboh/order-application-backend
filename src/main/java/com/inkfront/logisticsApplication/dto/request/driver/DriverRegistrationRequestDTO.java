@@ -11,7 +11,10 @@ import lombok.Data;
 public class DriverRegistrationRequestDTO {
 
     @NotBlank(message = "Name is required")
-    private String name;
+    private String firstName;
+
+    @NotBlank(message = "Name is required")
+    private String lastName;
 
     @NotBlank(message = "Email is required")
     @Email(message = "Invalid email format")
@@ -34,4 +37,5 @@ public class DriverRegistrationRequestDTO {
     private String bankName;
     private String accountNumber;
     private String accountName;
+    private String password;
 }
