@@ -265,6 +265,8 @@ public class TrackingServiceImpl implements TrackingService {
      * @throws InvalidTrackingStateException If the status transition is invalid
      * @throws AccessDeniedException If the user is not authorized
      */
+    // com/inkfront/logisticsApplication/service/impl/tracking/TrackingServiceImpl.java
+
     @Override
     public TrackingSessionResponseDTO updateStatus(StatusUpdateRequestDTO request, String userId) {
         log.info("Updating status for tracking: {} to {}", request.getTrackingId(), request.getStatus());
@@ -274,6 +276,15 @@ public class TrackingServiceImpl implements TrackingService {
         }
 
         TrackingSession session = findSession(request.getTrackingId());
+        TrackingStatus currentStatus = session.getStatus();
+        TrackingStatus targetStatus = request.getStatus();
+
+        // ✅ ALLOW IDEMPOTENT STATUS UPDATES (same status)
+        if (currentStatus == targetStatus) {
+            log.info("Tracking {} is already in status {}, returning current session (idempotent)",
+                    request.getTrackingId(), targetStatus);
+            return trackingMapper.toResponseDTO(session);
+        }
 
         // Check authorization
         boolean isDriver = session.getDriver().getId().equals(userId);
@@ -285,11 +296,6 @@ public class TrackingServiceImpl implements TrackingService {
         }
 
         // ✅ FIX: Handle CREATED status migration
-        TrackingStatus currentStatus = session.getStatus();
-        TrackingStatus targetStatus = request.getStatus();
-
-        // If the session is still CREATED and trying to go to DRIVER_EN_ROUTE_TO_PICKUP,
-        // auto-migrate through DRIVER_ACCEPTED first
         if (currentStatus == TrackingStatus.CREATED &&
                 targetStatus == TrackingStatus.DRIVER_EN_ROUTE_TO_PICKUP) {
             log.info("Auto-migrating CREATED session {} to DRIVER_ACCEPTED first", session.getId());

@@ -2,6 +2,7 @@ package com.inkfront.logisticsApplication.validator.tracking;
 
 import com.inkfront.logisticsApplication.domain.enums.TrackingStatus;
 import com.inkfront.logisticsApplication.exception.tracking.InvalidTrackingStateException;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
 import java.util.EnumMap;
@@ -9,6 +10,7 @@ import java.util.EnumSet;
 import java.util.Map;
 import java.util.Set;
 
+@Slf4j
 @Component
 public class TrackingStateValidator {
 
@@ -161,10 +163,25 @@ public class TrackingStateValidator {
         );
     }
 
+    /**
+     * Validates if a transition from one status to another is allowed.
+     *
+     * <p><b>Idempotent:</b> If the from and to statuses are the same,
+     * the transition is allowed without throwing an exception.</p>
+     *
+     * @param from The current status
+     * @param to The target status
+     * @throws InvalidTrackingStateException If the transition is invalid
+     */
     public void validateTransition(
             TrackingStatus from,
             TrackingStatus to
     ) {
+        // ✅ ALLOW SAME-STATUS TRANSITIONS (idempotent)
+        if (from == to) {
+            log.debug("Status is already {}, allowing idempotent transition", from);
+            return;
+        }
 
         Set<TrackingStatus> allowed =
                 ALLOWED_TRANSITIONS.getOrDefault(
@@ -173,6 +190,7 @@ public class TrackingStateValidator {
                 );
 
         if (!allowed.contains(to)) {
+            log.warn("Invalid transition attempted: {} -> {}", from, to);
             throw new InvalidTrackingStateException(
                     String.format(
                             "Invalid status transition from %s to %s",
@@ -181,13 +199,43 @@ public class TrackingStateValidator {
                     )
             );
         }
+
+        log.debug("Validated transition: {} -> {}", from, to);
     }
 
+    /**
+     * Checks if a status is terminal (no further transitions allowed).
+     *
+     * @param status The status to check
+     * @return true if the status is terminal
+     */
     public boolean isTerminal(TrackingStatus status) {
-
         return status == TrackingStatus.DELIVERED
                 || status == TrackingStatus.FAILED
                 || status == TrackingStatus.RETURNED
                 || status == TrackingStatus.CANCELLED;
+    }
+
+    /**
+     * Checks if a transition from one status to another is valid.
+     * This is a convenience method that returns boolean instead of throwing.
+     *
+     * @param from The current status
+     * @param to The target status
+     * @return true if the transition is valid
+     */
+    public boolean isValidTransition(TrackingStatus from, TrackingStatus to) {
+        // ✅ Allow same-status transitions (idempotent)
+        if (from == to) {
+            return true;
+        }
+
+        Set<TrackingStatus> allowed =
+                ALLOWED_TRANSITIONS.getOrDefault(
+                        from,
+                        EnumSet.noneOf(TrackingStatus.class)
+                );
+
+        return allowed.contains(to);
     }
 }

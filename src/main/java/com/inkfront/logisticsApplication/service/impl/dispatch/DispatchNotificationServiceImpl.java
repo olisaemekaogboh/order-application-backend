@@ -14,12 +14,14 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.messaging.simp.SimpMessagingTemplate;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.List;
 
 @Slf4j
 @Service
 @RequiredArgsConstructor
+@Transactional // Add this at class level to ensure all methods run in a transaction
 public class DispatchNotificationServiceImpl implements DispatchNotificationService {
 
     private final NotificationService notificationService;
@@ -43,7 +45,9 @@ public class DispatchNotificationServiceImpl implements DispatchNotificationServ
             log.warn("Failed to send role-based notifications: {}", e.getMessage());
         }
     }
+
     @Override
+    @Transactional(readOnly = true) // Read-only for query operations
     public void notifyDispatchCreated(Dispatch dispatch) {
         String message = "New dispatch created for order " + dispatch.getOrder().getOrderNumber();
         notifyAdminAndDispatchers("Dispatch Created", message);
@@ -51,6 +55,7 @@ public class DispatchNotificationServiceImpl implements DispatchNotificationServ
     }
 
     @Override
+    @Transactional(readOnly = true)
     public void notifyDispatchAssigned(Dispatch dispatch) {
         String message = "Dispatch assigned for order " + dispatch.getOrder().getOrderNumber();
         notifyAdminAndDispatchers("Dispatch Assigned", message);
@@ -58,6 +63,7 @@ public class DispatchNotificationServiceImpl implements DispatchNotificationServ
     }
 
     @Override
+    @Transactional(readOnly = true)
     public void notifyDriverAssigned(Dispatch dispatch, String driverName) {
         String userMessage = "You have been assigned to order " + dispatch.getOrder().getOrderNumber();
 
@@ -76,6 +82,7 @@ public class DispatchNotificationServiceImpl implements DispatchNotificationServ
     }
 
     @Override
+    @Transactional(readOnly = true)
     public void notifyVehicleAssigned(Dispatch dispatch, String vehicleNumber) {
         String message = "Vehicle " + vehicleNumber + " assigned to order " + dispatch.getOrder().getOrderNumber();
         notifyAdminAndDispatchers("Vehicle Assigned", message);
@@ -83,6 +90,7 @@ public class DispatchNotificationServiceImpl implements DispatchNotificationServ
     }
 
     @Override
+    @Transactional(readOnly = true)
     public void notifyDispatchAccepted(Dispatch dispatch) {
         String message = "Dispatch accepted for order " + dispatch.getOrder().getOrderNumber();
 
@@ -104,6 +112,7 @@ public class DispatchNotificationServiceImpl implements DispatchNotificationServ
     }
 
     @Override
+    @Transactional(readOnly = true)
     public void notifyDispatchRejected(Dispatch dispatch, String reason) {
         String message = "Dispatch rejected for order " + dispatch.getOrder().getOrderNumber() + ". Reason: " + reason;
         notifyAdminAndDispatchers("Dispatch Rejected", message);
@@ -111,6 +120,7 @@ public class DispatchNotificationServiceImpl implements DispatchNotificationServ
     }
 
     @Override
+    @Transactional(readOnly = true)
     public void notifyDispatchCompleted(Dispatch dispatch) {
         String message = "Dispatch completed for order " + dispatch.getOrder().getOrderNumber();
 
@@ -137,7 +147,6 @@ public class DispatchNotificationServiceImpl implements DispatchNotificationServ
                 );
             } catch (Exception e) {
                 log.warn("Failed to send notification to driver {}: {}", dispatch.getDriverId(), e.getMessage());
-                // Don't rethrow - we want the dispatch to complete even if notification fails
             }
         }
 
@@ -154,7 +163,9 @@ public class DispatchNotificationServiceImpl implements DispatchNotificationServ
             log.warn("Failed to send live update: {}", e.getMessage());
         }
     }
+
     @Override
+    @Transactional(readOnly = true)
     public void notifyDispatchCancelled(Dispatch dispatch, String reason) {
         String message = "Dispatch cancelled for order " + dispatch.getOrder().getOrderNumber() + ". Reason: " + reason;
 
@@ -193,6 +204,10 @@ public class DispatchNotificationServiceImpl implements DispatchNotificationServ
         }
     }
 
+    /**
+     * Builds LiveDispatchDTO with properly fetched data.
+     * Uses repositories to fetch data directly to avoid LazyInitializationException.
+     */
     private LiveDispatchDTO buildLiveDTO(Dispatch dispatch) {
         LiveDispatchDTO dto = LiveDispatchDTO.builder()
                 .dispatchId(dispatch.getId())
@@ -201,9 +216,18 @@ public class DispatchNotificationServiceImpl implements DispatchNotificationServ
                 .build();
 
         if (dispatch.getDriverId() != null) {
+            // Use the repository to fetch the driver with its user data
             driverRepository.findById(dispatch.getDriverId()).ifPresent(driver -> {
-                dto.setDriverName(driver.getUser().getFullName());
-                dto.setDriverPhone(driver.getUser().getPhoneNumber());
+                // Now fetch the user directly to ensure we have the data
+                userRepository.findById(driver.getId()).ifPresent(user -> {
+                    dto.setDriverName(user.getFullName());
+                    dto.setDriverPhone(user.getPhoneNumber());
+                });
+                // Fallback to lazy loading if user not found (should not happen)
+                if (dto.getDriverName() == null && driver.getUser() != null) {
+                    dto.setDriverName(driver.getUser().getFullName());
+                    dto.setDriverPhone(driver.getUser().getPhoneNumber());
+                }
                 dto.setDriverLatitude(driver.getCurrentLatitude());
                 dto.setDriverLongitude(driver.getCurrentLongitude());
             });
@@ -217,6 +241,4 @@ public class DispatchNotificationServiceImpl implements DispatchNotificationServ
         dto.setLastUpdate(java.time.LocalDateTime.now());
         return dto;
     }
-
-
 }
