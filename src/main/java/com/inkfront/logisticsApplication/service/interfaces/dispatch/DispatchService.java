@@ -44,4 +44,12 @@ public interface DispatchService {
     long countCompletedDispatches(String driverId);
 
     PaginatedResponseDTO<DispatchSummaryDTO> getMyDispatches(String email, int page, int size);
+
+    DispatchResponseDTO startTrip(String dispatchId, String userId);
+
+    DispatchResponseDTO pickupCompleted(String dispatchId, String userId);
+
+    DispatchResponseDTO startDelivery(String dispatchId, String userId);
+
+
 }

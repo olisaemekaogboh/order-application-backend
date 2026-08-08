@@ -7,10 +7,13 @@ import com.inkfront.logisticsApplication.domain.entity.dispatch.DispatchHistory;
 import com.inkfront.logisticsApplication.domain.entity.vehicle.Vehicle;
 import com.inkfront.logisticsApplication.domain.enums.DispatchStatus;
 import com.inkfront.logisticsApplication.domain.enums.OrderStatus;
+import com.inkfront.logisticsApplication.domain.enums.TrackingStatus;
 import com.inkfront.logisticsApplication.dto.request.dispatch.*;
 import com.inkfront.logisticsApplication.dto.request.tracking.StartTrackingRequestDTO;
+import com.inkfront.logisticsApplication.dto.request.tracking.StatusUpdateRequestDTO;
 import com.inkfront.logisticsApplication.dto.response.common.PaginatedResponseDTO;
 import com.inkfront.logisticsApplication.dto.response.dispatch.*;
+import com.inkfront.logisticsApplication.dto.response.tracking.TrackingSessionResponseDTO;
 import com.inkfront.logisticsApplication.events.publisher.DispatchEventPublisher;
 import com.inkfront.logisticsApplication.exception.ResourceNotFoundException;
 import com.inkfront.logisticsApplication.exception.dispatch.DispatchNotFoundException;
@@ -804,6 +807,34 @@ public class DispatchServiceImpl implements DispatchService {
 
         DispatchStatus previousStatus = dispatch.getStatus();
 
+        try {
+
+            TrackingSessionResponseDTO tracking =
+                    trackingService.getTrackingByOrder(dispatch.getOrder().getId());
+
+            if (tracking != null) {
+
+                // Arrived at destination
+                StatusUpdateRequestDTO arrived = new StatusUpdateRequestDTO();
+                arrived.setTrackingId(tracking.getId());
+                arrived.setStatus(TrackingStatus.ARRIVED_DESTINATION);
+
+                trackingService.updateStatus(arrived, userId);
+
+                // Delivered
+                StatusUpdateRequestDTO delivered = new StatusUpdateRequestDTO();
+                delivered.setTrackingId(tracking.getId());
+                delivered.setStatus(TrackingStatus.DELIVERED);
+
+                trackingService.updateStatus(delivered, userId);
+            }
+
+        } catch (Exception ex) {
+
+            log.error("Unable to complete tracking.", ex);
+
+        }
+
         dispatch.setStatus(DispatchStatus.DELIVERED);
         dispatch.setCompletedAt(LocalDateTime.now());
 
@@ -811,6 +842,7 @@ public class DispatchServiceImpl implements DispatchService {
 
         Order order = dispatch.getOrder();
         order.setStatus(OrderStatus.DELIVERED);
+        order.setDeliveryDate(LocalDateTime.now());
         orderRepository.save(order);
 
         assignmentOrchestrator.releaseResources(
@@ -818,6 +850,13 @@ public class DispatchServiceImpl implements DispatchService {
                 driverId,
                 "Delivery completed"
         );
+
+        Driver assignedDriver = dispatch.getDriver();
+
+        assignedDriver.setAvailable(true);
+        assignedDriver.setLastActive(LocalDateTime.now());
+
+        driverRepository.save(assignedDriver);
 
         logDispatchHistory(
                 dispatch,
@@ -1035,4 +1074,230 @@ public class DispatchServiceImpl implements DispatchService {
 
         return toPaginatedResponse(dispatches);
     }
+
+    @Override
+    @Transactional
+    public DispatchResponseDTO startTrip(String dispatchId, String userId) {
+
+        log.info("Driver {} starting trip for dispatch {}", userId, dispatchId);
+
+        Driver driver = driverRepository.findByUserId(userId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Driver not found"));
+
+        Dispatch dispatch = findDispatch(dispatchId);
+
+        if (dispatch.getDriver() == null) {
+            throw new DispatchStateException("No driver assigned.");
+        }
+
+        if (!dispatch.getDriver().getId().equals(driver.getId())) {
+            throw new DispatchStateException("You are not assigned to this dispatch.");
+        }
+
+        if (dispatch.getStatus() != DispatchStatus.DRIVER_ACCEPTED) {
+            throw new DispatchStateException(
+                    "Dispatch must be DRIVER_ACCEPTED before starting trip."
+            );
+        }
+
+        DispatchStatus previousStatus = dispatch.getStatus();
+
+        dispatch.setStatus(DispatchStatus.EN_ROUTE_PICKUP);
+
+        dispatch = dispatchRepository.save(dispatch);
+
+        // synchronize tracking
+        try {
+
+            TrackingSessionResponseDTO tracking =
+                    trackingService.getTrackingByOrder(dispatch.getOrder().getId());
+
+            if (tracking != null) {
+
+                StatusUpdateRequestDTO request = new StatusUpdateRequestDTO();
+
+                request.setTrackingId(tracking.getId());
+                request.setStatus(TrackingStatus.DRIVER_EN_ROUTE_TO_PICKUP);
+
+                trackingService.updateStatus(request, userId);
+            }
+
+        } catch (Exception ex) {
+
+            log.error("Unable to update tracking.", ex);
+
+        }
+
+        logDispatchHistory(
+                dispatch,
+                previousStatus,
+                DispatchStatus.EN_ROUTE_PICKUP,
+                driver.getId(),
+                "Driver started trip"
+        );
+
+        auditService.logAction(
+                driver.getId(),
+                "DISPATCH_STARTED",
+                "Dispatch",
+                dispatch.getId(),
+                "Driver started trip"
+        );
+
+
+
+        return dispatchMapper.toResponseDTO(dispatch);
+    }
+
+    @Override
+    @Transactional
+    public DispatchResponseDTO pickupCompleted(String dispatchId, String userId) {
+
+        log.info("Driver {} completed pickup for dispatch {}", userId, dispatchId);
+
+        Driver driver = driverRepository.findByUserId(userId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Driver not found"));
+
+        Dispatch dispatch = findDispatch(dispatchId);
+
+        if (dispatch.getDriver() == null) {
+            throw new DispatchStateException("No driver assigned.");
+        }
+
+        if (!dispatch.getDriver().getId().equals(driver.getId())) {
+            throw new DispatchStateException("You are not assigned to this dispatch.");
+        }
+
+        if (dispatch.getStatus() != DispatchStatus.EN_ROUTE_PICKUP) {
+            throw new DispatchStateException(
+                    "Dispatch must be EN_ROUTE_PICKUP before pickup completion."
+            );
+        }
+
+        DispatchStatus previousStatus = dispatch.getStatus();
+
+        dispatch.setStatus(DispatchStatus.PICKUP_COMPLETED);
+
+        dispatch = dispatchRepository.save(dispatch);
+
+        try {
+
+            TrackingSessionResponseDTO tracking =
+                    trackingService.getTrackingByOrder(dispatch.getOrder().getId());
+
+            if (tracking != null) {
+
+                StatusUpdateRequestDTO arrived = new StatusUpdateRequestDTO();
+                arrived.setTrackingId(tracking.getId());
+                arrived.setStatus(TrackingStatus.ARRIVED_PICKUP);
+
+                trackingService.updateStatus(arrived, userId);
+
+                StatusUpdateRequestDTO picked = new StatusUpdateRequestDTO();
+                picked.setTrackingId(tracking.getId());
+                picked.setStatus(TrackingStatus.PICKED_UP);
+
+                trackingService.updateStatus(picked, userId);
+            }
+
+        } catch (Exception ex) {
+
+            log.error("Failed to update tracking.", ex);
+
+        }
+
+        logDispatchHistory(
+                dispatch,
+                previousStatus,
+                DispatchStatus.PICKUP_COMPLETED,
+                driver.getId(),
+                "Pickup completed"
+        );
+
+        auditService.logAction(
+                driver.getId(),
+                "PICKUP_COMPLETED",
+                "Dispatch",
+                dispatch.getId(),
+                "Driver completed pickup"
+        );
+
+        return dispatchMapper.toResponseDTO(dispatch);
+    }
+
+    @Override
+    @Transactional
+    public DispatchResponseDTO startDelivery(String dispatchId, String userId) {
+
+        log.info("Driver {} started delivery for dispatch {}", userId, dispatchId);
+
+        Driver driver = driverRepository.findByUserId(userId)
+                .orElseThrow(() ->
+                        new ResourceNotFoundException("Driver not found"));
+
+        Dispatch dispatch = findDispatch(dispatchId);
+
+        if (dispatch.getDriver() == null) {
+            throw new DispatchStateException("No driver assigned.");
+        }
+
+        if (!dispatch.getDriver().getId().equals(driver.getId())) {
+            throw new DispatchStateException("You are not assigned to this dispatch.");
+        }
+
+        if (dispatch.getStatus() != DispatchStatus.PICKUP_COMPLETED) {
+            throw new DispatchStateException(
+                    "Dispatch must be PICKUP_COMPLETED before delivery can begin."
+            );
+        }
+
+        DispatchStatus previousStatus = dispatch.getStatus();
+
+        dispatch.setStatus(DispatchStatus.DELIVERY_IN_PROGRESS);
+
+        dispatch = dispatchRepository.save(dispatch);
+
+        try {
+
+            TrackingSessionResponseDTO tracking =
+                    trackingService.getTrackingByOrder(dispatch.getOrder().getId());
+
+            if (tracking != null) {
+
+                StatusUpdateRequestDTO request = new StatusUpdateRequestDTO();
+
+                request.setTrackingId(tracking.getId());
+                request.setStatus(TrackingStatus.IN_TRANSIT);
+
+                trackingService.updateStatus(request, userId);
+            }
+
+        } catch (Exception ex) {
+
+            log.error("Unable to update tracking.", ex);
+
+        }
+
+        logDispatchHistory(
+                dispatch,
+                previousStatus,
+                DispatchStatus.DELIVERY_IN_PROGRESS,
+                driver.getId(),
+                "Delivery started"
+        );
+
+        auditService.logAction(
+                driver.getId(),
+                "DELIVERY_STARTED",
+                "Dispatch",
+                dispatch.getId(),
+                "Driver started delivery"
+        );
+
+        return dispatchMapper.toResponseDTO(dispatch);
+    }
+
+
 }

@@ -73,4 +73,5 @@ public class SuccessMessages {
     public static final String REVIEW_APPROVED = "Review approved successfully";
     public static final String REVIEW_REJECTED = "Review rejected successfully";
     public static final String REVIEW_REPORTED = "Review reported successfully";
+    public static final String DISPATCH_UPDATED = "Dispatch Updated";
 }

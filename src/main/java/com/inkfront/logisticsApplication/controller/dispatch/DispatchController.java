@@ -330,4 +330,52 @@ public class DispatchController {
         );
     }
 
+    @PutMapping("/{dispatchId}/start-trip")
+    public ResponseEntity<ApiResponseDTO<DispatchResponseDTO>> startTrip(
+            @PathVariable String dispatchId,
+            Authentication authentication) {
+
+        AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
+
+        return ResponseEntity.ok(
+                ApiResponseDTO.success(
+                        SuccessMessages.DISPATCH_UPDATED,
+                        dispatchService.startTrip(dispatchId, user.getId())
+                )
+        );
+    }
+
+
+
+    @PutMapping("/{dispatchId}/pickup-completed")
+    public ResponseEntity<ApiResponseDTO<DispatchResponseDTO>> pickupCompleted(
+            @PathVariable String dispatchId,
+            Authentication authentication) {
+
+        AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
+
+        return ResponseEntity.ok(
+                ApiResponseDTO.success(
+                        SuccessMessages.DISPATCH_UPDATED,
+                        dispatchService.pickupCompleted(dispatchId, user.getId())
+                )
+        );
+    }
+
+    @PutMapping("/{dispatchId}/start-delivery")
+    public ResponseEntity<ApiResponseDTO<DispatchResponseDTO>> startDelivery(
+            @PathVariable String dispatchId,
+            Authentication authentication) {
+
+        AuthenticatedUser user = (AuthenticatedUser) authentication.getPrincipal();
+
+        return ResponseEntity.ok(
+                ApiResponseDTO.success(
+                        SuccessMessages.DISPATCH_UPDATED,
+                        dispatchService.startDelivery(dispatchId, user.getId())
+                )
+        );
+    }
+
+
 }
